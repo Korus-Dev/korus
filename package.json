@@ -1,0 +1,13 @@
+{
+  "name": "korus-pricing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pricing:update": "node scripts/update-pricing.mjs"
+  },
+  "dependencies": {
+    "smol-toml": "^1.8.0",
+    "zod": "4.4.3"
+  }
+}

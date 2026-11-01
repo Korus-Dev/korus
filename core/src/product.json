@@ -1,0 +1,24 @@
+{
+  "name": "Korus",
+  "companionName": "Korus Mobile",
+  "defaultTeamName": "Korus",
+  "slug": "korus",
+  "cliPackageName": "korus-cli",
+  "daemonName": "korusd",
+  "homeDirectory": ".korus",
+  "appId": "com.nabocorp.korus",
+  "protocolScheme": "korus",
+  "mcpServerName": "korus",
+  "repository": "Korus-Dev/korus",
+  "releaseRepository": "Korus-Dev/korus",
+  "repositoryUrl": "https://github.com/Korus-Dev/korus",
+  "websiteUrl": "https://meetkorus.dev",
+  "companionAppStoreUrl": "https://apps.apple.com/us/app/korus-mobile/id6822816255",
+  "updateBaseUrl": "https://update.electronjs.org",
+  "deploymentRoot": "/var/www/korus",
+  "downloadFileName": "korus-macos-arm64.dmg",
+  "companionRelay": {
+    "origin": "wss://relay.meetkorus.dev",
+    "peerId": "12D3KooWKgzKeaxarcdmiyzTLSu2fmxxY6Nkj4CZKfvQGspLMG5S"
+  }
+}
