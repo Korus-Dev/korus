@@ -57,7 +57,7 @@
           :key="deferredContent(message)!.contentId"
           :agent-id="agent.id" :session-id="contentSessionId" :message-id="message.id"
           :content="deferredContent(message)!" :read="readConversationContent"
-          @loaded="(id, full) => loadedContent.set(id, full)"
+          @loaded="rememberLoadedContent"
         />
         <span
           v-if="collaborationMessageLabel(message.id)"
@@ -369,8 +369,25 @@ const movingSuggestion = ref(false);
 const movedSuggestions = new Set<string>();
 const canMoveSuggestion = computed(() => Boolean(resolveConversationPaneValue(props.controller.actions).updateComposerState && resolveConversationPaneValue(props.controller.state).composer?.state));
 function guestAuthor(id: string | undefined) { return guestAuthors.value.find(author => author.messageId === id)?.name ?? null; }
+/** The full content read for cut rows, by content ID. */
 const loadedContent = reactive(new Map<string, RendererMessage>());
-watch(() => [props.agent?.id, contentSessionId.value], () => loadedContent.clear());
+// One source per value: a getter that builds an array answers with a new one on every run, and would fire each
+// time a snapshot hands the pane the same agent as a new object.
+watch([() => props.agent?.id, contentSessionId], () => loadedContent.clear());
+/**
+ * A row whose content changes gets a new content ID, and rows leave the conversation as it is paged. Each
+ * successful read therefore keeps only what the conversation still refers to: replaced revisions and rows that
+ * are gone stay in memory until the next one. The conversation is walked once per read, never for a snapshot.
+ */
+function rememberLoadedContent(contentId: string, full: RendererMessage): void {
+  const referenced = new Set<string>();
+  for (const message of resolveConversationPaneValue(props.controller.state).identity.messages) {
+    const deferred = (message as RendererMessage).deferredContent;
+    if (deferred) referenced.add(deferred.contentId);
+  }
+  for (const id of [...loadedContent.keys()]) if (!referenced.has(id)) loadedContent.delete(id);
+  if (referenced.has(contentId)) loadedContent.set(contentId, full);
+}
 function deferredContent(message: ChatMessage | PaneMessage): RendererMessage['deferredContent'] {
   // The SDK header slot exposes its normalized message, so resolve app metadata by ID.
   const original = resolveConversationPaneValue(props.controller.state).identity.messages.find((candidate) => candidate.id === message.id);

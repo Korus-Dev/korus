@@ -133,6 +133,23 @@ describe('Git log inline history', () => {
     expect(wrapper.text()).toContain('Yesterday commit');
   });
 
+  it('keeps the history and the search it shows when a snapshot brings the same agent again', async () => {
+    vi.useFakeTimers();
+    const getAgentGitLog = vi.fn().mockResolvedValue(page);
+    stubElectronTestWindow({ app: { getAgentGitLog } });
+    const wrapper = render();
+    await wrapper.get('input').setValue('visible');
+    await vi.advanceTimersByTimeAsync(250); await flushPromises();
+    const reads = getAgentGitLog.mock.calls.length;
+
+    // Every snapshot hands the panel an equal agent as a new object.
+    await wrapper.setProps({ agent: structuredClone(agent) }); await flushPromises();
+    await vi.advanceTimersByTimeAsync(250); await flushPromises();
+
+    expect(getAgentGitLog).toHaveBeenCalledTimes(reads);
+    expect((wrapper.get('input').element as HTMLInputElement).value).toBe('visible');
+  });
+
   it('invalidates pending results immediately when searching or changing agent and branch', async () => {
     vi.useFakeTimers();
     let resolveOld!: (page: AgentGitLogPage) => void;

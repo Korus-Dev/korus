@@ -38,6 +38,28 @@ function mountHeader(providerRuntime: ProviderRuntimeStatus, isLoading = false, 
 
 describe('AgentHeader', () => {
 
+  it('asks for the sharing status once for an agent, not again each time a snapshot brings the same agent', async () => {
+    const state = { active: true, handle: 'a'.repeat(32), connectedGuests: 2, availability: 'ready' as const };
+    const client = createClientApiMock();
+    const conversationShareControl = vi.fn(async () => ({ state }));
+    setElectronTestClient({ onEvent: client.api.onEvent, conversationShareControl });
+    const shared = { ...agent, providerSession: { kind: 'codex' as const, conversationId: 'owner' } };
+    const wrapper = mount(AgentHeader, {
+      props: { agent: shared, shareAvailable: true, shareStatusOnMount: true, providerRuntime: { provider: 'codex', status: 'running' }, isLoading: false, sidebarCollapsed: false },
+    });
+    try {
+      await flushPromises();
+      expect(wrapper.get('.agent-header__guest-count').text()).toBe('2');
+
+      // Every snapshot hands the header an equal agent as a new object.
+      await wrapper.setProps({ agent: structuredClone(shared) });
+      await flushPromises();
+
+      expect(conversationShareControl).toHaveBeenCalledOnce();
+      expect(wrapper.get('.agent-header__guest-count').text()).toBe('2');
+    } finally { wrapper.unmount(); }
+  });
+
   it('keeps pushed guest presence when an older initial status resolves and resets it when switching agents', async () => {
     const state = { active: true, handle: 'a'.repeat(32), connectedGuests: 0, availability: 'ready' as const };
     let resolveStatus!: (value: { state: typeof state }) => void;

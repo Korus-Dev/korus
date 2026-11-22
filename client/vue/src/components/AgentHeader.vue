@@ -264,7 +264,8 @@ async function loadShareStatus() {
     else localSharePresence.value = result.state;
   } catch { /* A sharing status failure must not block the conversation header. */ }
 }
-watch(() => [shareTargetKey(), props.shareStatusOnMount] as const, ([target, load]) => {
+// One source per value, so an equal agent arriving as a new object in a snapshot does not ask again.
+watch([shareTargetKey, () => props.shareStatusOnMount] as const, ([target, load]) => {
   shareStatusGeneration++;
   localSharePresence.value = null;
   if (load && target) void loadShareStatus();

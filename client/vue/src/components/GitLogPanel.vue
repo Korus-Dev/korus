@@ -124,7 +124,8 @@ function toggleGroup(date: string): void {
 }
 function loadOlder(): void { if (!loading.value) void load(generation, true); }
 watch(search, () => { const id = invalidate(); timer = setTimeout(() => { void load(id); }, 250); }, { flush: 'sync' });
-watch(() => [props.agent.id, props.agent.folder, props.agent.teamId, props.branch], () => {
+// One source per value, so an equal agent arriving as a new object in a snapshot keeps the history and the search.
+watch([() => props.agent.id, () => props.agent.folder, () => props.agent.teamId, () => props.branch], () => {
   search.value = '';
   refresh();
 }, { immediate: true, flush: 'sync' });

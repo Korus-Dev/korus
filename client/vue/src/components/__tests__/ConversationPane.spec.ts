@@ -311,6 +311,49 @@ describe('ConversationPane', () => {
     expect(wrapper.text()).not.toContain('Looking now.');
     wrapper.unmount();
   });
+  it('keeps the full content it read when the same agent arrives again in a new snapshot', async () => {
+    const full = { ...messages[1]!, parts: [{ type: 'text' as const, text: 'The full result is visible.' }] };
+    const bytes = Buffer.from(JSON.stringify(full));
+    const preview = { ...messages[1]!, deferredContent: { contentId: 'content', byteLength: bytes.length } };
+    const readConversationContent = vi.fn(async () => ({ data: bytes.toString('base64'), totalBytes: bytes.length, nextOffset: null }));
+    const wrapper = mountPane({ controller: controllerFor([preview]), agent: claudeAgent, readConversationContent });
+    await flushPromises();
+
+    // Every snapshot hands the pane an equal agent as a new object.
+    await wrapper.setProps({ agent: structuredClone(claudeAgent) });
+    await flushPromises();
+
+    expect(readConversationContent).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain('The full result is visible.');
+    wrapper.unmount();
+  });
+  it('keeps only the latest full content read for a row whose content changes', async () => {
+    const revision = (id: string, text: string) => {
+      const bytes = Buffer.from(JSON.stringify({ ...messages[1]!, parts: [{ type: 'text' as const, text }] }));
+      return { preview: { ...messages[1]!, deferredContent: { contentId: id, byteLength: bytes.length } }, bytes };
+    };
+    const first = revision('content-1', 'First revision.');
+    const second = revision('content-2', 'Second revision.');
+    const byId = new Map([['content-1', first.bytes], ['content-2', second.bytes]]);
+    const readConversationContent = vi.fn(async (_agentId: string, input: { contentId: string }) => {
+      const bytes = byId.get(input.contentId)!;
+      return { data: bytes.toString('base64'), totalBytes: bytes.length, nextOffset: null };
+    });
+    const wrapper = mountPane({ controller: controllerFor([first.preview]), agent: claudeAgent, readConversationContent });
+    await flushPromises();
+    await wrapper.setProps({ controller: controllerFor([second.preview]) });
+    await flushPromises();
+    expect(wrapper.text()).toContain('Second revision.');
+    expect(readConversationContent).toHaveBeenCalledTimes(2);
+
+    // What was read for the replaced revision is gone: showing that revision again reads it again.
+    await wrapper.setProps({ controller: controllerFor([first.preview]) });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('First revision.');
+    expect(readConversationContent).toHaveBeenCalledTimes(3);
+    wrapper.unmount();
+  });
   it('leaves a very large cut row as its preview, with nothing to press', async () => {
     const preview = { ...messages[1]!, deferredContent: { contentId: 'huge', byteLength: 20 * 1024 * 1024 } };
     const readConversationContent = vi.fn();
