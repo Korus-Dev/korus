@@ -15,6 +15,7 @@ import {
   type AppRpcRequest,
   type AppRpcResponse,
 } from '@workspace/core/backend-protocol/rpc';
+import { LineFramer } from '@workspace/core/backend-protocol/line-framer';
 import { warnMain } from './log';
 import { backendRequestTimeoutMs } from './backend-request-timeout';
 
@@ -34,7 +35,9 @@ export class BackendRpcSession {
   private readonly pending = new Map<AppRpcId, PendingRequest>();
   private readonly eventListeners = new Set<(event: AppBackendEvent) => void>();
   private readonly connectionStateListeners = new Set<(state: 'connected' | 'disconnected', error?: Error) => void>();
-  private buffer = '';
+  private readonly framer = new LineFramer();
+  /** Changes whenever the transport is replaced or closed, so frames read from the previous one stop being handled. */
+  private transportGeneration = 0;
   private nextRequestId = 1;
   private write: ((message: string) => void) | null = null;
 
@@ -44,33 +47,37 @@ export class BackendRpcSession {
 
   connected(write: (message: string) => void): void {
     this.write = write;
-    this.buffer = '';
+    this.resetFraming();
     this.emitConnectionState('connected');
   }
 
   disconnected(error: Error): void {
     if (!this.write) return;
     this.write = null;
-    this.buffer = '';
+    this.resetFraming();
     this.rejectPending(error);
     this.emitConnectionState('disconnected', error);
   }
 
   close(error: Error): void {
     this.write = null;
-    this.buffer = '';
+    this.resetFraming();
     this.rejectPending(error);
   }
 
-  receive(chunk: Buffer | string): void {
-    this.buffer += chunk.toString();
-    while (true) {
-      const newlineIndex = this.buffer.indexOf('\n');
-      if (newlineIndex < 0) return;
-      const line = this.buffer.slice(0, newlineIndex).trim();
-      this.buffer = this.buffer.slice(newlineIndex + 1);
+  receive(chunk: Uint8Array | string): void {
+    const generation = this.transportGeneration;
+    for (const frame of this.framer.push(chunk)) {
+      // Handling a frame can replace or close the transport; the rest of this read then belongs to nothing.
+      if (generation !== this.transportGeneration) return;
+      const line = frame.trim();
       if (line) this.handleLine(line);
     }
+  }
+
+  private resetFraming(): void {
+    this.framer.reset();
+    this.transportGeneration += 1;
   }
 
   request<Result>(method: string, params?: unknown): Promise<Result> {

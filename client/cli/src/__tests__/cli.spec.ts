@@ -50,6 +50,21 @@ async function daemon(socket: string, handle: (method: string, params: unknown) 
   cleanups.push(async () => { for (const client of connections) client.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); });
   return requests;
 }
+/** A daemon whose reply bytes the test writes itself. */
+async function rawDaemon(socket: string, reply: (client: net.Socket, request: { id: string; method: string }) => void | Promise<void>) {
+  const connections = new Set<net.Socket>();
+  const server = net.createServer(client => {
+    connections.add(client); client.on('close', () => connections.delete(client));
+    // The CLI hangs up as soon as it has its answer or gives up; later writes then fail by design.
+    client.on('error', () => undefined);
+    let data = '';
+    client.on('data', chunk => { data += chunk.toString(); let index: number;
+      while ((index = data.indexOf('\n')) >= 0) { const line = data.slice(0, index); data = data.slice(index + 1); void Promise.resolve(reply(client, JSON.parse(line))).catch(() => undefined); }
+    });
+  });
+  await new Promise<void>(resolve => server.listen(socket, resolve));
+  cleanups.push(async () => { for (const client of connections) client.destroy(); await new Promise<void>(resolve => server.close(() => resolve())); });
+}
 
 describe('standalone CLI', () => {
   it('prints help and version without inspecting or creating application state', async () => {
@@ -411,6 +426,32 @@ describe('standalone CLI', () => {
     expect(f.launch).not.toHaveBeenCalled();
     expect(f.err.join('')).toMatch(/authenticat|sign.in/i);
     expect((await readdir(path.join(f.home, 'triage')))).toHaveLength(3);
+  });
+  it('reads a live reply that arrives in pieces behind a daemon broadcast', async () => {
+    const f = await fixture(); await f.seed();
+    const snapshot = { agents: [{ id: 'one', name: 'Bâtisseur — 😀', provider: 'codex', status: { type: 'idle' } }], missions: [] };
+    await rawDaemon(path.join(f.home, 'daemon.sock'), async (client, request) => {
+      const reply = Buffer.from(`${JSON.stringify({ jsonrpc: '2.0', method: 'backend/event/notify', params: { seq: 1 } })}\n${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { snapshot } })}\n`);
+      // Each piece is flushed on its own turn so the reads cut frames and multi-byte characters.
+      for (let offset = 0; offset < reply.length; offset += 5) {
+        await new Promise<void>(resolve => client.write(reply.subarray(offset, offset + 5), () => resolve()));
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+    });
+
+    expect(await f.command(['agents', 'list', '--json'])).toBe(0);
+
+    expect(JSON.parse(f.out.pop()!)).toStrictEqual({ source: 'live', agents: [{ id: 'one', name: 'Bâtisseur — 😀', provider: 'codex', status: 'idle' }] });
+  });
+  it('refuses a daemon reply larger than the size limit instead of buffering it', async () => {
+    const f = await fixture(); await f.seed();
+    await rawDaemon(path.join(f.home, 'daemon.sock'), (client, request) => {
+      client.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { ok: true, version: '0.50.6', name: product.daemonName, padding: 'x'.repeat(33 * 1024 * 1024) } })}\n`);
+    });
+
+    expect(await f.command(['doctor', '--json'])).toBe(0);
+
+    expect(JSON.parse(f.out.join('')).daemon).toStrictEqual({ running: false, detail: 'Daemon response exceeded the CLI size limit.' });
   });
   it('lists live agent and Mission metadata without changing backend state', async () => {
     const f = await fixture(); await f.seed();

@@ -1,14 +1,16 @@
 import net from 'node:net';
 import { randomUUID } from 'node:crypto';
+import { LineFramer } from '@workspace/core/backend-protocol/line-framer';
 import { CliError, record, type CliOptions } from './context';
+
+const maxReplyBytes = 32 * 1024 * 1024;
 
 /** A bounded one-shot connection; diagnostics never start or repair the daemon. */
 export function request(options: Pick<CliOptions, 'socket' | 'timeout' | 'signal'>, method: string, params?: unknown): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (options.signal?.aborted) { reject(options.signal.reason); return; }
-    const id = randomUUID(); let buffer = ''; let settled = false;
+    const id = randomUUID(); const framer = new LineFramer(); let settled = false;
     const socket = net.createConnection(options.socket);
-    socket.setEncoding('utf8');
     const finish = (error?: Error, result?: unknown) => {
       if (settled) return; settled = true; clearTimeout(timer); options.signal?.removeEventListener('abort', abort); socket.destroy();
       if (error) reject(error); else resolve(result);
@@ -19,12 +21,9 @@ export function request(options: Pick<CliOptions, 'socket' | 'timeout' | 'signal
     socket.once('connect', () => socket.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) })}\n`));
     socket.once('error', () => finish(new CliError(`Daemon socket unavailable at ${options.socket}.`)));
     socket.once('close', () => finish(new CliError('Daemon closed the connection before replying.')));
-    socket.on('data', chunk => {
-      buffer += chunk.toString('utf8');
-      if (Buffer.byteLength(buffer) > 32 * 1024 * 1024) { finish(new CliError('Daemon response exceeded the CLI size limit.')); return; }
-      let index: number;
-      while ((index = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, index); buffer = buffer.slice(index + 1);
+    socket.on('data', (chunk: Buffer) => {
+      if (framer.pendingBytes + chunk.length > maxReplyBytes) { finish(new CliError('Daemon response exceeded the CLI size limit.')); return; }
+      for (const line of framer.push(chunk)) {
         let reply: unknown;
         try { reply = JSON.parse(line); } catch { finish(new CliError('Daemon returned malformed JSON.')); return; }
         if (!record(reply)) continue;

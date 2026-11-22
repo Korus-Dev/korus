@@ -2,6 +2,7 @@ import { createAppRpcError, createAppRpcNotification, createAppRpcRequest, appRp
 import { appErrorDescriptor } from '@workspace/core/app-error';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { backendRequestTimeoutMs } from '@workspace/core/backend-protocol/request-timeout';
+import { LineFramer } from '@workspace/core/backend-protocol/line-framer';
 import type { Readable, Writable } from 'node:stream';
 
 export type StdioRpcServerOptions = {
@@ -43,7 +44,7 @@ type QueuedFrame = {
 const DEFAULT_MAX_BUFFERED_OUTPUT_BYTES = 128 * 1024 * 1024;
 
 export class StdioRpcPeer {
-  private buffer = '';
+  private readonly framer = new LineFramer();
   private nextRequestId = 1;
   private readonly pending = new Map<AppRpcId, PendingRequest>();
   private outputBackpressured = false;
@@ -111,23 +112,10 @@ export class StdioRpcPeer {
     this.write(createAppRpcNotification(method, params));
   }
 
-  private readonly onData = (chunk: Buffer | string) => {
-    this.buffer += chunk.toString();
-
-    while (true) {
-      const newlineIndex = this.buffer.indexOf('\n');
-      if (newlineIndex < 0) {
-        break;
-      }
-
-      const line = this.buffer.slice(0, newlineIndex).trim();
-      this.buffer = this.buffer.slice(newlineIndex + 1);
-
-      if (line.length === 0) {
-        continue;
-      }
-
-      this.handleLine(line);
+  private readonly onData = (chunk: Uint8Array | string) => {
+    for (const frame of this.framer.push(chunk)) {
+      const line = frame.trim();
+      if (line.length > 0) this.handleLine(line);
     }
   };
 

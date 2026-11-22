@@ -108,6 +108,54 @@ describe('stdio JSON-RPC transport', () => {
     expect(responses.join('')).toBe('{"jsonrpc":"2.0","id":"1","result":{"method":"backend/health/get"}}\n');
   });
 
+  it('keeps request text intact when input reads split it inside multi-byte characters', async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const responses: string[] = [];
+    output.on('data', (chunk) => responses.push(chunk.toString()));
+    const stop = startStdioRpcServer({
+      input,
+      output,
+      onMessage: (message) => ({ jsonrpc: '2.0', id: 'id' in message ? message.id : null, result: 'params' in message ? message.params : null }),
+    });
+    const params = { note: 'résumé — naïve façade 😀 '.repeat(12) };
+
+    try {
+      const frame = Buffer.from(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'backend/health/get', params })}\n`);
+      // Seven-byte reads cut the two-, three- and four-byte characters at every possible position.
+      for (let offset = 0; offset < frame.length; offset += 7) input.write(frame.subarray(offset, offset + 7));
+
+      await vi.waitFor(() => expect(responses).toHaveLength(1));
+      expect(JSON.parse(responses[0])).toStrictEqual({ jsonrpc: '2.0', id: 1, result: params });
+    } finally {
+      stop();
+    }
+  });
+
+  it('answers requests that share a read and finishes one left incomplete by it', async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const responses: string[] = [];
+    output.on('data', (chunk) => responses.push(chunk.toString()));
+    const stop = startStdioRpcServer({
+      input,
+      output,
+      onMessage: (message) => ({ jsonrpc: '2.0', id: 'id' in message ? message.id : null, result: true }),
+    });
+    const request = (id: number) => `${JSON.stringify({ jsonrpc: '2.0', id, method: 'backend/health/get' })}\n`;
+    const answeredIds = () => responses.join('').trim().split('\n').filter(Boolean).map(line => JSON.parse(line).id);
+
+    try {
+      input.write(`${request(1)}\n${request(2)}${request(3).slice(0, 20)}`);
+      await vi.waitFor(() => expect(answeredIds()).toStrictEqual([1, 2]));
+
+      input.write(request(3).slice(20));
+      await vi.waitFor(() => expect(answeredIds()).toStrictEqual([1, 2, 3]));
+    } finally {
+      stop();
+    }
+  });
+
   it('returns parse errors for invalid JSON lines', async () => {
     const input = new PassThrough();
     const output = new PassThrough();

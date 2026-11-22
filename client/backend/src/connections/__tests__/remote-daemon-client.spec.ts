@@ -47,6 +47,23 @@ describe('RemoteDaemonClientManager', () => {
     await manager.close();
   });
 
+  it('keeps a remote result intact when it arrives split inside multi-byte characters and behind an unfinished frame', async () => {
+    const child = createChildProcess();
+    const manager = new RemoteDaemonClientManager({ spawnProcess: vi.fn(() => child.process) as never });
+    const text = 'résumé — naïve façade 😀 '.repeat(12);
+
+    try {
+      const result = manager.request(readyConnection(), backendMethods.agentPluginsList, { agentId: 'remote' });
+      await vi.waitFor(() => expect(child.stdinLines()).toHaveLength(1));
+      const request = JSON.parse(child.stdinLines()[0]!) as { id: number };
+      const frame = Buffer.from(`\n${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: [text] })}\n{"jsonrpc":`);
+      // Seven-byte reads cut the two-, three- and four-byte characters at every possible position.
+      for (let offset = 0; offset < frame.length; offset += 7) child.stdout.write(frame.subarray(offset, offset + 7));
+
+      await expect(result).resolves.toStrictEqual([text]);
+    } finally { await manager.close(); }
+  });
+
   it('normalizes persisted SSH stdio transports to the daemon-first command', async () => {
     const child = createChildProcess();
     const spawnProcess = vi.fn(() => child.process);

@@ -1,4 +1,5 @@
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import { LineFramer } from '@workspace/core/backend-protocol/line-framer';
 import { backendRequestTimeoutMs } from '@workspace/core/backend-protocol/request-timeout';
 import {
   decodeAppBackendEvent,
@@ -105,7 +106,7 @@ export class RemoteDaemonClientManager {
 
 class RemoteDaemonClient {
   private process: ChildProcessWithoutNullStreams | null = null;
-  private stdoutBuffer = '';
+  private readonly stdoutFramer = new LineFramer();
   private stderrBuffer = '';
   private nextRequestId = 1;
   private readonly pending = new Map<AppRpcId, PendingRequest>();
@@ -226,17 +227,9 @@ class RemoteDaemonClient {
     });
   }
 
-  private handleStdout(chunk: Buffer | string): void {
-    this.stdoutBuffer += chunk.toString();
-
-    while (true) {
-      const newlineIndex = this.stdoutBuffer.indexOf('\n');
-      if (newlineIndex < 0) {
-        break;
-      }
-
-      const line = this.stdoutBuffer.slice(0, newlineIndex).trim();
-      this.stdoutBuffer = this.stdoutBuffer.slice(newlineIndex + 1);
+  private handleStdout(chunk: Uint8Array | string): void {
+    for (const frame of this.stdoutFramer.push(chunk)) {
+      const line = frame.trim();
       if (line) {
         this.handleLine(line);
       }

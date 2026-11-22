@@ -117,6 +117,92 @@ describe('AppBackendSocketClient', () => {
     });
   });
 
+  it('keeps response text intact when socket reads split it inside multi-byte characters', async () => {
+    const socket = createFakeSocket();
+    const client = new AppBackendSocketClient({ socketPath: '/tmp/daemon.sock', connectSocket: vi.fn().mockReturnValue(socket) });
+    const starting = client.start();
+    socket.emit('connect');
+    await starting;
+    const result = { note: 'résumé — naïve façade 😀 '.repeat(12) };
+
+    const response = client.request('snapshot/get');
+    const frame = Buffer.from(`${JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(socket.writes[0]).id, result })}\n`);
+    // Seven-byte reads cut the two-, three- and four-byte characters at every possible position.
+    for (let offset = 0; offset < frame.length; offset += 7) socket.writeFromServer(frame.subarray(offset, offset + 7));
+
+    await expect(response).resolves.toStrictEqual(result);
+  });
+
+  it('delivers frames that share a read and finishes one left incomplete by it', async () => {
+    const socket = createFakeSocket();
+    const client = new AppBackendSocketClient({ socketPath: '/tmp/daemon.sock', connectSocket: vi.fn().mockReturnValue(socket) });
+    const starting = client.start();
+    socket.emit('connect');
+    await starting;
+    const events = vi.fn();
+    client.onEvent(events);
+    const event = (seq: number) => ({
+      seq, provider: 'codex' as const, type: 'provider.statusChanged',
+      payload: { provider: 'codex' as const, status: 'running' }, occurredAt: '2026-06-14T00:00:00.000Z',
+    });
+    const notification = (seq: number) => `${JSON.stringify({ jsonrpc: '2.0', method: 'backend/event/notify', params: event(seq) })}\n`;
+
+    const response = client.request('snapshot/get');
+    const reply = `${JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(socket.writes[0]).id, result: { ok: true } })}\n`;
+    const unfinished = notification(3);
+    socket.writeFromServer(`${notification(1)}${reply}${notification(2)}${unfinished.slice(0, 40)}`);
+
+    await expect(response).resolves.toStrictEqual({ ok: true });
+    expect(events.mock.calls).toStrictEqual([[event(1)], [event(2)]]);
+
+    socket.writeFromServer(unfinished.slice(40));
+
+    expect(events.mock.calls).toStrictEqual([[event(1)], [event(2)], [event(3)]]);
+  });
+
+  it('stops delivering the frames of a read once a listener closes the client', async () => {
+    const socket = createFakeSocket();
+    const client = new AppBackendSocketClient({ socketPath: '/tmp/daemon.sock', connectSocket: vi.fn().mockReturnValue(socket) });
+    const starting = client.start();
+    socket.emit('connect');
+    await starting;
+    const seen: number[] = [];
+    client.onEvent((event) => {
+      seen.push(event.seq);
+      void client.close();
+    });
+    const notification = (seq: number) => `${JSON.stringify({
+      jsonrpc: '2.0', method: 'backend/event/notify',
+      params: { seq, provider: 'codex', type: 'provider.statusChanged', payload: { provider: 'codex', status: 'running' }, occurredAt: '2026-06-14T00:00:00.000Z' },
+    })}\n`;
+
+    socket.writeFromServer(`${notification(1)}${notification(2)}`);
+
+    expect(seen).toStrictEqual([1]);
+  });
+
+  it('discards a frame cut short by a lost connection before reading the next connection', async () => {
+    const firstSocket = createFakeSocket();
+    const secondSocket = createFakeSocket();
+    const client = new AppBackendSocketClient({
+      socketPath: '/tmp/daemon.sock',
+      connectSocket: vi.fn().mockReturnValueOnce(firstSocket).mockReturnValueOnce(secondSocket),
+    });
+    const firstStart = client.start();
+    firstSocket.emit('connect');
+    await firstStart;
+    firstSocket.writeFromServer('{"jsonrpc":"2.0","method":"backend/event/notify","params":{"seq":1,');
+    firstSocket.emit('close');
+    const secondStart = client.start();
+    secondSocket.emit('connect');
+    await secondStart;
+
+    const response = client.request('snapshot/get');
+    secondSocket.writeFromServer(`${JSON.stringify({ jsonrpc: '2.0', id: JSON.parse(secondSocket.writes[0]).id, result: { ok: true } })}\n`);
+
+    await expect(response).resolves.toStrictEqual({ ok: true });
+  });
+
   it('handles backend-initiated client requests over the socket', async () => {
     const socket = createFakeSocket();
     const openExternal = vi.fn().mockResolvedValue(true);
@@ -200,7 +286,7 @@ function createFakeSocket() {
       callback?.();
       return true;
     }),
-    writeFromServer: (chunk: string) => {
+    writeFromServer: (chunk: string | Uint8Array) => {
       stream.emit('data', Buffer.from(chunk));
     },
     once: (event: string, listener: (...args: unknown[]) => void) => {
