@@ -6,6 +6,7 @@ import { createScriptedHarness } from '@korus-dev/multi-agent-sdk/testing';
 import { defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { scriptedDriver } from './support/scripted-driver';
 import { product } from '@workspace/core/product';
+import { decodeAppBackendEvent } from '@workspace/core/backend-protocol/events';
 import { AgentRegistry } from '../harness-agent-driver';
 
 const opened: Array<{ close(): Promise<void> }> = [];
@@ -168,6 +169,22 @@ describe('Korus provider drivers over the SDK Harness', () => {
     seen.length = 0;
     await driver.loadConversation!(agent);
     expect(seen).toMatchObject([{ type: 'conversation.sessionSnapshot', payload: { snapshot: { revision: 1, state: { title: 'Release' } } } }]);
+  });
+
+  it('publishes the notices clients can read and keeps the others from taking a place in the event sequence', async () => {
+    const { driver, script } = scriptedDriver('codex');
+    const seen: unknown[] = [];
+    driver.onEvent(event => seen.push(event));
+    const decoded: unknown[] = [];
+
+    // A harness notice that is not part of the app's event contract, such as Codex remote control pairing.
+    script.emit({ type: 'remoteControl.statusChanged', provider: 'codex', payload: { status: 'disabled' }, occurredAt: '2026-11-22T00:00:00Z' });
+    script.emit({ type: 'provider.statusChanged', provider: 'codex', payload: { provider: 'codex', status: 'running' }, occurredAt: '2026-11-22T00:00:01Z' });
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+
+    // Everything the driver publishes is an event a client of this build decodes; anything else would read as a gap.
+    for (const event of seen) decoded.push(decodeAppBackendEvent({ ...(event as object), seq: 1 }));
+    expect(decoded).toMatchObject([{ type: 'provider.statusChanged' }]);
   });
 
   it('reloads a conversation whose provider stream broke, and hands readers the repaired state', async () => {

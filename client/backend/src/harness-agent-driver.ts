@@ -1,3 +1,4 @@
+import { isAppBackendEventType } from '@workspace/core/backend-protocol/events';
 import { randomUUID } from 'node:crypto';
 import { runtimeStatusDetail, withStatusWording } from './provider-status-wording';
 import type { Harness, HarnessDefaults, HarnessEvent, Session, SessionData, SessionPatch } from '@korus-dev/multi-agent-sdk';
@@ -117,6 +118,9 @@ export class HarnessAgentDriver implements AgentProviderDriver {
         return { type, ...scope, payload } as BackendEvent;
       }
       default: {
+        // A harness can report more than the app's event contract describes. Such a notice is not published: no
+        // client could decode it, and once numbered it would read as a lost event and make clients read the whole state.
+        if (!isAppBackendEventType(event.type)) return undefined;
         const { session: _session, ...notice } = event;
         return withStatusWording(provider, (agentId ? { ...notice, agentId } : notice) as BackendEvent);
       }

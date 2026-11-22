@@ -170,12 +170,17 @@ function expectEventContext(event: EventRecord): void {
   }
 }
 
+/** Whether clients of this build can decode an event of this type: one outside the contract would read as a lost event. */
+export function isAppBackendEventType(type: string): type is AppBackendEventType {
+  return Object.hasOwn(payloadValidators, type);
+}
+
 export function decodeAppBackendEvent(value: unknown): AppBackendEvent {
   expectRecord(value, '$');
   expectNumber(value.seq, '$.seq');
   expectOptional(value, 'coveredFromSeq', '$', expectNumber);
   expectString(value.occurredAt, '$.occurredAt');
-  if (typeof value.type !== 'string' || !(value.type in payloadValidators)) {
+  if (typeof value.type !== 'string' || !isAppBackendEventType(value.type)) {
     failEventValidation('$.type', 'expected a supported event type');
   }
   const event = value as EventRecord;
