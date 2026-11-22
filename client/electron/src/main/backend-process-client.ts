@@ -52,7 +52,8 @@ export class AppBackendProcessClient {
 
     const child = this.spawnProcess(this.command.command, this.command.args, {
       cwd: this.command.cwd,
-      ...(this.command.env ? { env: { ...process.env, ...this.command.env } } : {}),
+      // The desktop reads compact snapshots; the daemon it owns sends them from its first frame (see `client/wire/configure`).
+      env: { ...process.env, ...this.command.env, APP_STDIO_SNAPSHOTS: 'compact' },
       stdio: 'pipe',
     });
 

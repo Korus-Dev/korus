@@ -8,6 +8,8 @@ import type { Readable, Writable } from 'node:stream';
 
 export type StdioRpcServerOptions = {
   input: Readable;
+  /** Sends compact snapshots from the first frame, for a process started by a desktop that reads them. */
+  compactSnapshots?: boolean;
   maxBufferedOutputBytes?: number;
   output: Writable;
   onOutputBackpressure?(details: { frameBytes: number; writableLength: number }): void;
@@ -56,7 +58,9 @@ export class StdioRpcPeer {
   private outputQueueBytes = 0;
   private started = false;
 
-  constructor(private readonly options: StdioRpcServerOptions & { requestTimeoutMs?: number | null }) {}
+  constructor(private readonly options: StdioRpcServerOptions & { requestTimeoutMs?: number | null }) {
+    this.compactSnapshots = options.compactSnapshots === true;
+  }
 
   start(): void {
     if (this.started) {

@@ -75,8 +75,10 @@ describe('AppBackendProcessClient', () => {
       version: '0.1.0',
       pid: 123,
     });
+    // The daemon inherits the desktop's environment and is told to send compact snapshots from its first frame.
     expect(spawnProcess).toHaveBeenCalledWith('node', ['client/backend/dist/daemon.mjs', '--stdio'], {
       cwd: undefined,
+      env: { ...process.env, APP_STDIO_SNAPSHOTS: 'compact' },
       stdio: 'pipe',
     });
   });

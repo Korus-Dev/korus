@@ -222,6 +222,29 @@ describe('stdio JSON-RPC transport', () => {
       }
     });
 
+    it('sends compact snapshots from the first frame when the process was started for a desktop', async () => {
+      const snapshot = createInitialSnapshot();
+      const team = snapshot.teams[0]!;
+      const lead = snapshot.agents.find(agent => agent.teamId === team.id)!;
+      const mission = createMission(snapshot, { outcome: 'Ship checkout', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: lead.id });
+      mission.execution!.runs = [{ id: 'finished', stage: 'requirements', memberId: lead.id, status: 'accepted', skills: [], feedback: '', startedAt: '2026-11-01T00:00:00.000Z', proposal: structuredClone(mission.artifacts) }];
+      const output = new PassThrough();
+      const frames: string[] = [];
+      output.on('data', (chunk) => frames.push(chunk.toString()));
+      const peer = new StdioRpcPeer({ input: new PassThrough(), output, compactSnapshots: true, onMessage: () => undefined });
+      peer.start();
+      try {
+        // A daemon publishes while it starts, before the desktop has asked for anything.
+        peer.notify(backendMethods.backendEventNotify, { seq: 1, type: 'snapshot.updated', payload: snapshot, occurredAt: '2026-11-01T00:00:00.000Z' });
+
+        const sent = JSON.parse(frames.join('').trim()).params.payload;
+        expect(sent.missions[0].execution.runs[0]).not.toHaveProperty('proposal');
+        expect(snapshot.missions![0]!.execution!.runs[0]!.proposal).toBeDefined();
+      } finally {
+        peer.stop();
+      }
+    });
+
     it('keeps sending complete snapshots to a client that never asked for compact ones', async () => {
       const { peer, snapshot, clientState, request, publish, turnDiff } = wireFixture();
       try {

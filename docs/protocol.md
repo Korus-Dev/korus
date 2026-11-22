@@ -90,7 +90,9 @@ producer or dependency is a mobile API change when it changes that wire contract
   makes every snapshot sent on that connection (results, `snapshot.updated`, snapshots
   beside other events) omit the proposal of finished Mission runs
   (`compactClientSnapshot`); the daemon keeps them. A compact snapshot is authoritative
-  for the client that asked for it. A connection that never asks receives complete
+  for the client that asked for it. A desktop that starts its own daemon over stdio also
+  sets `APP_STDIO_SNAPSHOTS=compact` at launch, because the daemon publishes snapshots
+  while it starts, before any request can reach it. A connection that never asks receives complete
   snapshots, which is what remote controllers and the CLI rely on; the phone is served
   its own projection by the companion gateway and never through such a connection.
 - **daemon → client requests:** host callbacks for native effects only (open

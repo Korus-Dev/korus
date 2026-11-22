@@ -273,9 +273,14 @@ async function withHomeLock(start: (lock: HomeLock | null) => Promise<void>, req
 
 async function runStdio(homeLock: HomeLock | null): Promise<void> {
   let runtime: DaemonRuntime;
+  // A desktop that starts this process reads compact snapshots. It says so at launch, because the daemon publishes
+  // snapshots while it starts, before any request of the desktop could reach it. The setting is not passed on.
+  const compactSnapshots = process.env.APP_STDIO_SNAPSHOTS === 'compact';
+  delete process.env.APP_STDIO_SNAPSHOTS;
   const stdio = new StdioRpcPeer({
     input: process.stdin,
     output: process.stdout,
+    compactSnapshots,
     onOutputBackpressure: (details) => debugMain('stdio', 'output buffered', details),
     onOutputDrain: (details) => debugMain('stdio', 'output drained', details),
     onOutputOverflow: (details) => warnMain('stdio', 'output buffer limit exceeded', details),
