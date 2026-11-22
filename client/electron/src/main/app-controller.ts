@@ -1063,10 +1063,7 @@ export class AppController {
     }
 
     try {
-      await this.backendClient.start();
-      const health = await this.backendClient.health();
-      this.subscribeToBackendClient();
-      await this.synchronizeBackendState();
+      const { health } = await this.connectAndSynchronize(this.backendClient);
       this.setConnectionState({ status: 'connected' });
       this.handleTelemetryActivity();
       logMain('daemon', 'connected to backend', { version: health.version, pid: health.pid });
@@ -1076,6 +1073,37 @@ export class AppController {
         detail: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * Starts a connection, checks it, configures it and reads its state, all behind one synchronization barrier.
+   *
+   * The barrier opens before the connection is even started. Across a reconnect the event listener stays installed,
+   * so an event can arrive while the new connection is started, checked or configured: it is then replayed against
+   * the state read at the end, rather than judged against the sequence of the connection being replaced, or lost
+   * to a read it would have started on its own. A failed attempt drops what it buffered.
+   */
+  private async connectAndSynchronize(client: AppBackendClientPort): Promise<{ health: Awaited<ReturnType<AppBackendClientPort['health']>>; snapshot: AppSnapshot }> {
+    this.backendEventBuffer = [];
+    try {
+      await client.start();
+      const health = await client.health();
+      this.subscribeToBackendClient();
+      await this.requestCompactSnapshots();
+      return { health, snapshot: await this.synchronizeBackendState() };
+    } catch (error) {
+      this.backendEventBuffer = null;
+      throw error;
+    }
+  }
+
+  /**
+   * The desktop never reads the proposal of a finished Mission run, so it asks each connection to leave them out of
+   * snapshots. A daemon that predates the request refuses it and keeps sending complete snapshots, which the
+   * desktop reads just as well.
+   */
+  private async requestCompactSnapshots(): Promise<void> {
+    await this.requireBackendClient().request(backendMethods.clientWireConfigure, { snapshots: 'compact' }).catch(() => undefined);
   }
 
   private async connectWorkProvider(provider: WorkProviderKind, options?: WorkProviderConnectOptions): Promise<WorkProviderConnectResult> {
@@ -2273,10 +2301,7 @@ export class AppController {
   private async reconnectBackend(): Promise<void> {
     if (this.shuttingDown || !this.backendClient) return;
     try {
-      await this.backendClient.start();
-      const health = await this.backendClient.health();
-      this.subscribeToBackendClient();
-      const snapshot = await this.synchronizeBackendState();
+      const { health, snapshot } = await this.connectAndSynchronize(this.backendClient);
       this.reconnectAttempt = 0;
       this.setConnectionState({ status: 'connected' });
       this.handleTelemetryActivity();

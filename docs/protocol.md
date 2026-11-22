@@ -85,6 +85,14 @@ producer or dependency is a mobile API change when it changes that wire contract
 - **Client → daemon:** product requests.
 - **daemon → client notifications:** one method, `backend/event/notify`, carrying a
   sequenced `AppBackendEvent` and a small derived `clientState`.
+- **Connection configuration:** `client/wire/configure` is answered by the transport
+  for its own connection and never reaches the application. `{ snapshots: 'compact' }`
+  makes every snapshot sent on that connection (results, `snapshot.updated`, snapshots
+  beside other events) omit the proposal of finished Mission runs
+  (`compactClientSnapshot`); the daemon keeps them. A compact snapshot is authoritative
+  for the client that asked for it. A connection that never asks receives complete
+  snapshots, which is what remote controllers and the CLI rely on; the phone is served
+  its own projection by the companion gateway and never through such a connection.
 - **daemon → client requests:** host callbacks for native effects only (open
   external, browser open/execute, spoken announcement, permission surfaces),
   currently implemented by Electron. Unknown methods answer `methodNotFound`; a
@@ -101,7 +109,11 @@ Electron and the renderer use a subscribe-buffer-snapshot barrier: subscribe, bu
 notifications while reading `snapshot/get`, discard snapshot-owned events at or below
 `lastEventSeq`, apply only contiguous events above it. Provider frames received during or after
 a synchronization barrier retain their own revision checks: the product snapshot cannot
-replace their transcript data. A gap triggers a fresh
+replace their transcript data. For a connection attempt Electron opens the barrier
+before it starts the connection and keeps it through the health check, the connection
+configuration and the read, so a notification it receives meanwhile is replayed against
+the state read at the end and not judged against the sequence of the connection being
+replaced; a failed attempt drops what it buffered. A gap triggers a fresh
 barrier, with one exception: a gap revealed by an incoming live `snapshot.updated` that
 carries a complete snapshot and its `clientState` is repaired from that event, since a
 read would return the same state. Electron then publishes a client-sourced snapshot

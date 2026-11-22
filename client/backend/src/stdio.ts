@@ -3,6 +3,7 @@ import { appErrorDescriptor } from '@workspace/core/app-error';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { backendRequestTimeoutMs } from '@workspace/core/backend-protocol/request-timeout';
 import { LineFramer } from '@workspace/core/backend-protocol/line-framer';
+import { compactWireMessage, readClientWireConfiguration } from '@workspace/core/backend-protocol/compact-wire';
 import type { Readable, Writable } from 'node:stream';
 
 export type StdioRpcServerOptions = {
@@ -45,6 +46,8 @@ const DEFAULT_MAX_BUFFERED_OUTPUT_BYTES = 128 * 1024 * 1024;
 
 export class StdioRpcPeer {
   private readonly framer = new LineFramer();
+  /** Set by the client of this connection; a client that never asks receives complete snapshots. */
+  private compactSnapshots = false;
   private nextRequestId = 1;
   private readonly pending = new Map<AppRpcId, PendingRequest>();
   private outputBackpressured = false;
@@ -131,6 +134,13 @@ export class StdioRpcPeer {
         this.handleResponse(message);
         return;
       }
+      // How this connection is served is the transport's own state; the request never reaches the application.
+      if (isAppRpcRequest(message) && message.method === backendMethods.clientWireConfigure) {
+        const configuration = readClientWireConfiguration(message.params);
+        this.compactSnapshots = configuration.snapshots === 'compact';
+        this.write({ jsonrpc: '2.0', id: message.id, result: configuration }, message.method);
+        return;
+      }
       const loadReceivedAt = performance.now();
       const isLoad = isAppRpcRequest(message) && message.method === backendMethods.agentConversationLoad;
       const markLoad = (stage: string) => {
@@ -192,6 +202,7 @@ export class StdioRpcPeer {
   }
 
   private write(message: AppRpcMessage, responseMethod?: string): void {
+    if (this.compactSnapshots) message = compactWireMessage(message);
     const replacesQueuedSnapshot = this.outputBackpressured ? this.replaceQueuedSnapshot(message) : null;
     if (replacesQueuedSnapshot) message = replacesQueuedSnapshot;
     const metadata = conversationLoadFrameMetadata(message, responseMethod);

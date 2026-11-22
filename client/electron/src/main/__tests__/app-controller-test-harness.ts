@@ -73,6 +73,10 @@ export function createBackendClient(overrides: {
       if (method === 'client/state/get') {
         return Promise.resolve(clientState) as Promise<Result>;
       }
+      // Connection setup, answered like the daemon does, so it does not consume a test's scripted answers.
+      if (method === 'client/wire/configure') {
+        return Promise.resolve(params) as Promise<Result>;
+      }
       return request(method, params) as Promise<Result>;
     },
     onEvent,

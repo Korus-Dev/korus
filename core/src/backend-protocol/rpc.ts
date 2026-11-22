@@ -24,6 +24,12 @@ export type { AppBackendEvent } from './events';
 
 export type AppRpcId = string | number;
 
+/**
+ * How a client asks the daemon to shape what it sends on its connection. A client that never asks receives complete
+ * snapshots; `compact` leaves out the bodies described by `compactClientSnapshot`.
+ */
+export type ClientWireConfiguration = { snapshots: 'complete' | 'compact' };
+
 export type AppRpcRequest = {
   jsonrpc: '2.0';
   id: AppRpcId;
@@ -164,6 +170,10 @@ export type AppBackendRequestMap = {
   [backendMethods.clientStateGet]: {
     params: undefined;
     result: ClientState;
+  };
+  [backendMethods.clientWireConfigure]: {
+    params: ClientWireConfiguration;
+    result: ClientWireConfiguration;
   };
   [backendMethods.agentGitLogGet]: {
     params: { agentId: string; input?: import('../contracts').AgentGitLogInput };

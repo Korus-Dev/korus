@@ -3,6 +3,8 @@ import { once } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import { startStdioRpcServer, StdioRpcPeer } from '../stdio';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
+import { createMission } from '@workspace/core/missions';
+import { createInitialSnapshot } from '@workspace/core/snapshot';
 
 describe('stdio JSON-RPC transport', () => {
   it.each([undefined, '0', '1'])('emits conversation timing only for an explicit opt-in (%s)', async flag => {
@@ -154,6 +156,84 @@ describe('stdio JSON-RPC transport', () => {
     } finally {
       stop();
     }
+  });
+
+  describe('compact snapshots', () => {
+    function wireFixture() {
+      const snapshot = createInitialSnapshot();
+      const team = snapshot.teams[0]!;
+      const lead = snapshot.agents.find(agent => agent.teamId === team.id)!;
+      const mission = createMission(snapshot, { outcome: 'Ship checkout', workflowType: 'shapeAndShipFeature', teamId: team.id, orchestratorMemberId: lead.id });
+      const run = (id: string, status: 'accepted' | 'awaitingReview') => ({
+        id, stage: 'requirements' as const, memberId: lead.id, status, skills: [], feedback: '', startedAt: '2026-11-01T00:00:00.000Z', proposal: structuredClone(mission.artifacts),
+      });
+      mission.execution!.runs = [run('finished', 'accepted'), run('pending', 'awaitingReview')];
+      snapshot.turnGitDiffs = {
+        'turn-1': { agentId: lead.id, turnId: 'turn-1', addedLines: 3, removedLines: 1, diff: 'diff --git a/a b/a', updatedAt: '2026-11-01T00:00:00.000Z' },
+        'turn-2': { agentId: lead.id, turnId: 'turn-2', addedLines: 1, removedLines: 0, diff: 'diff --git a/b b/b', updatedAt: '2026-11-01T00:00:01.000Z' },
+      };
+      const clientState = { sourceFolderPath: '/projects', shouldPreventDisplaySleep: false };
+      const input = new PassThrough();
+      const output = new PassThrough();
+      const frames: Array<{ id?: number; result?: unknown; params?: unknown }> = [];
+      let unfinished = '';
+      output.on('data', (chunk) => {
+        const lines = (unfinished + chunk.toString()).split('\n');
+        unfinished = lines.pop()!;
+        frames.push(...lines.filter(Boolean).map(line => JSON.parse(line)));
+      });
+      const peer = new StdioRpcPeer({
+        input,
+        output,
+        onMessage: (message) => ({
+          jsonrpc: '2.0',
+          id: 'id' in message ? message.id! : 1,
+          result: 'method' in message && message.method === backendMethods.snapshotGet ? { snapshot, lastEventSeq: 7, clientState } : snapshot,
+        }),
+      });
+      peer.start();
+      const request = async (id: number, method: string, params?: unknown) => {
+        input.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) })}\n`);
+        await vi.waitFor(() => expect(frames.some(frame => frame.id === id)).toBe(true));
+        return frames.find(frame => frame.id === id)!.result;
+      };
+      const publish = (event: Record<string, unknown>) => {
+        peer.notify(backendMethods.backendEventNotify, event);
+        return frames.at(-1)!.params as { payload: unknown; snapshot?: unknown };
+      };
+      // The finished run loses its proposal; nothing else changes, the changes of turns included.
+      const compact = structuredClone(snapshot);
+      delete compact.missions![0]!.execution!.runs[0]!.proposal;
+      return { peer, snapshot, compact, clientState, request, publish, turnDiff: { addedLines: 1, removedLines: 0, diff: 'diff --git a/b b/b' } };
+    }
+
+    it('sends a client that asked for compact snapshots every snapshot without the proposals of finished Mission runs', async () => {
+      const { peer, snapshot, compact, clientState, request, publish, turnDiff } = wireFixture();
+      try {
+        expect(await request(1, backendMethods.clientWireConfigure, { snapshots: 'compact' })).toStrictEqual({ snapshots: 'compact' });
+
+        expect(await request(2, backendMethods.agentUpdate)).toStrictEqual(compact);
+        expect(await request(3, backendMethods.snapshotGet)).toStrictEqual({ snapshot: compact, lastEventSeq: 7, clientState });
+        expect(publish({ seq: 8, type: 'snapshot.updated', payload: snapshot, occurredAt: '2026-11-01T00:00:02.000Z' }).payload).toStrictEqual(compact);
+        expect(publish({ seq: 9, type: 'agent.updated', agentId: 'agent-1', payload: { id: 'agent-1' }, snapshot, occurredAt: '2026-11-01T00:00:03.000Z' }).snapshot).toStrictEqual(compact);
+        expect(publish({ seq: 10, type: 'conversation.turnDiffUpdated', agentId: 'agent-1', turnId: 'turn-2', payload: turnDiff, occurredAt: '2026-11-01T00:00:04.000Z' }).payload).toStrictEqual(turnDiff);
+      } finally {
+        peer.stop();
+      }
+    });
+
+    it('keeps sending complete snapshots to a client that never asked for compact ones', async () => {
+      const { peer, snapshot, clientState, request, publish, turnDiff } = wireFixture();
+      try {
+        expect(await request(2, backendMethods.agentUpdate)).toStrictEqual(snapshot);
+        expect(await request(3, backendMethods.snapshotGet)).toStrictEqual({ snapshot, lastEventSeq: 7, clientState });
+        expect(publish({ seq: 8, type: 'snapshot.updated', payload: snapshot, occurredAt: '2026-11-01T00:00:02.000Z' }).payload).toStrictEqual(snapshot);
+        expect(publish({ seq: 9, type: 'agent.updated', agentId: 'agent-1', payload: { id: 'agent-1' }, snapshot, occurredAt: '2026-11-01T00:00:03.000Z' }).snapshot).toStrictEqual(snapshot);
+        expect(publish({ seq: 10, type: 'conversation.turnDiffUpdated', agentId: 'agent-1', turnId: 'turn-2', payload: turnDiff, occurredAt: '2026-11-01T00:00:04.000Z' }).payload).toStrictEqual(turnDiff);
+      } finally {
+        peer.stop();
+      }
+    });
   });
 
   it('returns parse errors for invalid JSON lines', async () => {

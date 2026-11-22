@@ -186,6 +186,7 @@ const requestTimeoutByMethod = {
   [backendMethods.clientComputerUseStatusGet]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.agentRequestRespond]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.clientStateGet]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
+  [backendMethods.clientWireConfigure]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.clientSystemPermissionsAccessibilityOpen]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientSystemPermissionsGet]: IO_REQUEST_TIMEOUT_MS,
   [backendMethods.clientSystemPermissionsScreenRecordingOpen]: IO_REQUEST_TIMEOUT_MS,

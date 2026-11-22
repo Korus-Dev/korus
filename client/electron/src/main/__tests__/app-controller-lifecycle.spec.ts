@@ -1232,6 +1232,84 @@ describe('controller desktop lifecycle', () => {
     expect(window.webContents.send).toHaveBeenCalledTimes(sent);
   });
 
+  it('asks the daemon for compact snapshots before reading its state, and connects all the same when the daemon refuses', async () => {
+    const { controller, provider } = setup();
+
+    await controller.initialize();
+
+    // The fixture daemon does not know the request, like one that predates it.
+    expect(provider.request.mock.calls.slice(0, 2)).toStrictEqual([
+      ['client/wire/configure', { snapshots: 'compact' }],
+      ['snapshot/get'],
+    ]);
+    expect(await invoke(ipcChannels.getSnapshotState)).toMatchObject({ connection: { status: 'connected' } });
+  });
+
+  it.each(['start', 'health', 'client/wire/configure', 'snapshot/get'])('replays a finished creation from a restarted daemon that arrives during %s on reconnect', async (phase) => {
+    const { controller, provider, window, state, emit, disconnect } = setup();
+    state.lastEventSeq = 50;
+    controller.createWindow();
+    await controller.initialize();
+    window.webContents.send.mockClear();
+    // The replacement daemon counts its events from the start again.
+    state.lastEventSeq = 1;
+    const finished = () => emit({ seq: 1, type: 'agentCreation.progress', agentId: 'agent-dina', occurredAt: '2026-11-22T00:00:00Z',
+      payload: { id: 'creation', state: 'success', provider: 'codex', repositoryName: 'repo', hasPrompt: true, createWorktree: false } });
+    let delivered = false;
+    if (phase === 'start') provider.start.mockImplementationOnce(async () => { finished(); });
+    if (phase === 'health') provider.health.mockImplementationOnce(async () => { finished(); return { ok: true, name: 'daemon', version: 'test', pid: 123 }; });
+    provider.request.mockImplementation(async (method: string) => {
+      if (method === phase && !delivered) {
+        delivered = true;
+        finished();
+      }
+      if (method === 'snapshot/get') return state;
+      if (method === 'client/wire/configure') return { snapshots: 'compact' };
+      return {};
+    });
+
+    disconnect(new Error('daemon replaced'));
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(await invoke(ipcChannels.getSnapshotState)).toMatchObject({ connection: { status: 'connected' }, lastBackendEventSeq: 1 });
+    const progress = window.webContents.send.mock.calls.filter(([channel, event]) => channel === ipcChannels.event && event.type === 'agentCreation.progress');
+    expect(progress).toHaveLength(1);
+  });
+
+  it('keeps a finished creation received while the health of a reconnected daemon is being checked', async () => {
+    const { controller, provider, window, state, emit, disconnect } = setup();
+    state.lastEventSeq = 50;
+    controller.createWindow();
+    await controller.initialize();
+    window.webContents.send.mockClear();
+    // The same daemon is back after an outage, three events further on.
+    state.lastEventSeq = 53;
+    let answerRead!: () => void;
+    const readHeld = new Promise<void>(resolve => { answerRead = resolve; });
+    provider.request.mockImplementation(async (method: string) => {
+      if (method === 'snapshot/get') { await readHeld; return state; }
+      if (method === 'client/wire/configure') return { snapshots: 'compact' };
+      return {};
+    });
+    provider.health.mockImplementationOnce(async () => {
+      emit({ seq: 53, type: 'agentCreation.progress', agentId: 'agent-dina', occurredAt: '2026-11-22T00:00:00Z',
+        payload: { id: 'creation', state: 'success', provider: 'codex', repositoryName: 'repo', hasPrompt: true, createWorktree: false } });
+      return { ok: true, name: 'daemon', version: 'test', pid: 123 };
+    });
+
+    disconnect(new Error('socket reconnected'));
+    await vi.advanceTimersByTimeAsync(250);
+    answerRead();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(await invoke(ipcChannels.getSnapshotState)).toMatchObject({ connection: { status: 'connected' }, lastBackendEventSeq: 53 });
+    const progress = window.webContents.send.mock.calls.filter(([channel, event]) => channel === ipcChannels.event && event.type === 'agentCreation.progress');
+    expect(progress).toHaveLength(1);
+    // One barrier for the attempt: the connection is configured before its state is read.
+    const order = provider.request.mock.calls.map(([method]) => method).filter(method => method === 'snapshot/get' || method === 'client/wire/configure');
+    expect(order.slice(0, 2)).toStrictEqual(['client/wire/configure', 'snapshot/get']);
+  });
+
   it('applies a snapshot that stands in for merged snapshots without reading the daemon again', async () => {
     const { controller, provider, state, emit, window } = setup();
     controller.createWindow();

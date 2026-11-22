@@ -149,6 +149,7 @@ export const backendMethods = {
   clientComputerUseStatusGet: 'client/computerUse/status/get',
   agentRequestRespond: 'agent/request/respond',
   clientStateGet: 'client/state/get',
+  clientWireConfigure: 'client/wire/configure',
   clientSystemPermissionsAccessibilityOpen: 'client/system/permissions/accessibility/open',
   clientSystemPermissionsGet: 'client/system/permissions/get',
   clientSystemPermissionsScreenRecordingOpen: 'client/system/permissions/screenRecording/open',
