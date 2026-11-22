@@ -79,7 +79,8 @@ describe('companion workspace projection', () => {
     it('reports each ticket the way the desktop board does, with the worker of one that has run', () => {
       const workspace = projectCompanionWorkspace(source([mission('m', {
         artifacts: { tickets: [ticket('Done', { done: true }), ticket('Going', { dependsOn: [0], repositoryPath: '/Users/me/src/billing-service' }), ticket('Waiting', { dependsOn: [1] }), ticket('Free'), ticket('Retried')] },
-        execution: { runs: [run(1, 'running', 'w1'), run(4, 'failed', 'old'), run(4, 'awaitingReview', 'w4')] },
+        // Only implementation runs say how a ticket is doing, even when a run of another stage carries its position.
+        execution: { runs: [run(1, 'running', 'w1'), run(4, 'failed', 'old'), run(4, 'awaitingReview', 'w4'), { ...run(3, 'failed'), stage: 'review' }, { ...run(4, 'failed'), stage: 'review' }] },
       })], [agent('w1', {}), agent('old', {}), agent('w4', {}), agent('chat', {})]));
       expect(workspace.missionProgress).toStrictEqual([{ id: 'm', teamId: 'team', outcome: 'Ship it', stage: 'implementation', status: 'active', revision: 3, startedAt: '2026-01-01T00:30:00Z', updatedAt: now, tickets: [
         { number: 1, title: 'Done', state: 'accepted' }, { number: 2, title: 'Going', repository: 'billing-service', state: 'running', agentId: 'w1' }, { number: 3, title: 'Waiting', state: 'blocked', after: [2] },

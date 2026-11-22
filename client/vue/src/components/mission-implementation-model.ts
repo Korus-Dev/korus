@@ -4,10 +4,26 @@ import type { MissionRun } from '@workspace/core/mission-execution';
 export type MissionImplementationTicketItem = { ticket: MissionTicket; index: number; run?: MissionRun };
 export type MissionImplementationTicketStatus = 'queued' | 'blocked' | MissionRun['status'];
 
+/**
+ * Each ticket with its latest implementation run of the same revision. A run names its ticket by id or, when saved
+ * without one, by position. The runs are read once, in order, so a later run replaces an earlier one however it matched.
+ */
 export function implementationTicketItems(tickets: readonly MissionTicket[], runs: readonly MissionRun[]): MissionImplementationTicketItem[] {
-  return tickets.map((ticket, index) => ({ ticket, index, run: runs.filter(run => run.stage === 'implementation'
-    && (run.ticketId ? run.ticketId === ticket.id : run.ticketIndex === index)
-    && (run.ticketRevision ?? 0) === (ticket.revision ?? 0)).at(-1) }));
+  const revisions: number[] = [];
+  const positionsById = new Map<string, number[]>();
+  tickets.forEach((ticket, index) => {
+    revisions[index] = ticket.revision ?? 0;
+    if (!ticket.id) return;
+    const positions = positionsById.get(ticket.id);
+    if (positions) positions.push(index); else positionsById.set(ticket.id, [index]);
+  });
+  const latest: (MissionRun | undefined)[] = [];
+  runs.forEach((run) => {
+    if (run.stage !== 'implementation') return;
+    const positions = run.ticketId ? positionsById.get(run.ticketId) ?? [] : typeof run.ticketIndex === 'number' ? [run.ticketIndex] : [];
+    for (const index of positions) if ((run.ticketRevision ?? 0) === revisions[index]) latest[index] = run;
+  });
+  return tickets.map((ticket, index) => ({ ticket, index, run: latest[index] }));
 }
 
 export function implementationTicketStatus(

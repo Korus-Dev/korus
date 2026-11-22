@@ -2,7 +2,7 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import type { Agent, AgentWorkspaceIdentity, AppSnapshot, ProviderDefaults, Team } from './contracts';
 import { withLegacyConversationId, withLegacyPermission, type CompanionGitStatus, type CompanionMission, type CompanionMissionReview, type CompanionMissionTicketState, type CompanionReviewFinding, type CompanionWorkspace } from './companion-protocol';
-import type { Mission, MissionReviewFinding } from './mission-types';
+import type { Mission, MissionReviewFinding, MissionRun } from './mission-types';
 import { missionStageReady } from './missions';
 import { enabledAgentProviders, providerConnectionsForHost } from './agent-providers';
 import { repositoryIconForAgent } from './workspace-sidebar';
@@ -68,11 +68,17 @@ export function projectCompanionWorkspace(source: CompanionWorkspace & { reposit
 const maxCompanionMissions = 20;
 const maxMissionText = 500;
 
+/** The latest implementation run at each ticket position, read once for all of a mission's tickets. */
+function latestTicketRuns(mission: Mission): Map<number | undefined, MissionRun> {
+  const latest = new Map<number | undefined, MissionRun>();
+  (mission.execution?.runs ?? []).forEach((run) => { if (run.stage === 'implementation') latest.set(run.ticketIndex, run); });
+  return latest;
+}
+
 /** Mirrors the desktop's implementation board: accepted, else the latest run's status, else whether its blockers are done. */
-function ticketState(mission: Mission, index: number): { state: CompanionMissionTicketState; workerId?: string; runId?: string } {
+function ticketState(mission: Mission, index: number, run: MissionRun | undefined): { state: CompanionMissionTicketState; workerId?: string; runId?: string } {
   const tickets = mission.artifacts?.tickets ?? [];
   const ticket = tickets[index]!;
-  const run = (mission.execution?.runs ?? []).filter((candidate) => candidate.stage === 'implementation' && candidate.ticketIndex === index).at(-1);
   const workerId = run?.workerId ? { workerId: run.workerId } : {};
   if (ticket.done) return { state: 'accepted', ...workerId };
   if (run) return { state: run.status, ...workerId, ...(run.status === 'awaitingReview' ? { runId: run.id } : {}) };
@@ -121,15 +127,18 @@ function companionMissionsOf(source: { missions?: Mission[]; agents: Agent[] }):
   const ranked = [...(source.missions ?? [])].filter((mission) => mission.artifacts?.tickets)
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
     .slice(0, maxCompanionMissions);
-  const missions = ranked.map((mission): CompanionMission => ({ id: mission.id, teamId: mission.teamId, outcome: mission.outcome.slice(0, maxMissionText), stage: mission.stage,
-    status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLeadAgentId(mission) ? { leadAgentId: missionLeadAgentId(mission)! } : {}), revision: mission.revision, ...(missionNext(mission, source.agents) ? { next: missionNext(mission, source.agents)! } : {}), ...(missionReview(mission) ? { review: missionReview(mission)! } : {}),
-    tickets: mission.artifacts.tickets.map((ticket, index) => {
-      const { state, workerId, runId } = ticketState(mission, index);
-      if (workerId) workerIds.add(workerId);
-      const after = state === 'blocked' ? (ticket.dependsOn ?? []).filter((blocker) => !mission.artifacts.tickets[blocker]?.done).map((blocker) => blocker + 1) : [];
-      const repository = ticket.repositoryPath ? lastSegments(ticket.repositoryPath, 1) : undefined;
-      return { number: index + 1, title: ticket.title.slice(0, maxMissionText), state, ...(repository ? { repository } : {}), ...(workerId ? { agentId: workerId } : {}), ...(after.length ? { after } : {}), ...(runId ? { runId } : {}) };
-    }) }));
+  const missions = ranked.map((mission): CompanionMission => {
+    const latestRuns = latestTicketRuns(mission);
+    return { id: mission.id, teamId: mission.teamId, outcome: mission.outcome.slice(0, maxMissionText), stage: mission.stage,
+      status: mission.status, startedAt: missionStart(mission), updatedAt: mission.updatedAt, ...(missionLeadAgentId(mission) ? { leadAgentId: missionLeadAgentId(mission)! } : {}), revision: mission.revision, ...(missionNext(mission, source.agents) ? { next: missionNext(mission, source.agents)! } : {}), ...(missionReview(mission) ? { review: missionReview(mission)! } : {}),
+      tickets: mission.artifacts.tickets.map((ticket, index) => {
+        const { state, workerId, runId } = ticketState(mission, index, latestRuns.get(index));
+        if (workerId) workerIds.add(workerId);
+        const after = state === 'blocked' ? (ticket.dependsOn ?? []).filter((blocker) => !mission.artifacts.tickets[blocker]?.done).map((blocker) => blocker + 1) : [];
+        const repository = ticket.repositoryPath ? lastSegments(ticket.repositoryPath, 1) : undefined;
+        return { number: index + 1, title: ticket.title.slice(0, maxMissionText), state, ...(repository ? { repository } : {}), ...(workerId ? { agentId: workerId } : {}), ...(after.length ? { after } : {}), ...(runId ? { runId } : {}) };
+      }) };
+  });
   for (const mission of missions) if (mission.leadAgentId) workerIds.add(mission.leadAgentId);
   return { missions, workerIds };
 }

@@ -1048,6 +1048,45 @@ describe('MissionWorkspace', () => {
     expect(ticketDialogText()).not.toContain('Old checks');
   });
 
+  it('shows the latest run of each ticket, matched by ticket id or, for runs saved without one, by position', () => {
+    const mission = missionWithRun('accepted', true);
+    mission.stage = 'implementation';
+    const ticket = (title: string, patch: Partial<Mission['artifacts']['tickets'][number]> = {}) => ({ title, repositoryPath: '/src/billing-service', done: false, ...patch });
+    mission.artifacts.tickets = [
+      ticket('Retried', { id: 'mission-ticket-retried' }),
+      ticket('Adopted', { id: 'mission-ticket-adopted' }),
+      ticket('Resumed', { id: 'mission-ticket-resumed' }),
+      ticket('Revised', { id: 'mission-ticket-revised', revision: 2 }),
+      ticket('Saved without an id'),
+      ticket('Moved', { id: 'mission-ticket-moved' }),
+      ticket('Unstarted'),
+    ];
+    const run = (id: string, status: MissionRun['status'], patch: Partial<MissionRun>): MissionRun => ({ id, stage: 'implementation', memberId: 'agent-dina', status, skills: [], feedback: '', startedAt: 'now', ...patch });
+    mission.execution!.runs = [
+      // The last attempt wins.
+      run('retried-1', 'failed', { ticketId: 'mission-ticket-retried' }), run('retried-2', 'running', { ticketId: 'mission-ticket-retried' }),
+      // Between a run found by id and one found by position, the later one wins, whichever it is.
+      run('adopted-1', 'failed', { ticketIndex: 1 }), run('adopted-2', 'awaitingReview', { ticketId: 'mission-ticket-adopted' }),
+      run('resumed-1', 'failed', { ticketId: 'mission-ticket-resumed' }), run('resumed-2', 'running', { ticketIndex: 2 }),
+      // Only runs of the ticket's current revision count, even when another revision ran later.
+      run('revised-current', 'awaitingReview', { ticketId: 'mission-ticket-revised', ticketRevision: 2 }),
+      run('revised-stale', 'failed', { ticketId: 'mission-ticket-revised', ticketRevision: 1 }), run('revised-unversioned', 'failed', { ticketIndex: 3 }),
+      run('unidentified-1', 'failed', { ticketIndex: 4 }), run('unidentified-2', 'running', { ticketIndex: 4 }),
+      // A run naming another ticket does not belong to the ticket now at its position, and other stages never count.
+      run('elsewhere', 'failed', { ticketId: 'mission-ticket-removed', ticketIndex: 5 }),
+      run('review', 'failed', { stage: 'review', ticketIndex: 6 }),
+    ];
+    const wrapper = mountWorkspace(mission);
+
+    const cards = wrapper.get('[aria-label="Implementation by repository"]').findAll('.mission-implementation__ticket');
+    expect(cards.map(card => `${card.get('.mission-implementation__ticket-title').text()}: ${card.get('[data-status]').text()}`)).toStrictEqual([
+      'Retried: Building', 'Adopted: Ready for review', 'Resumed: Building', 'Revised: Ready for review', 'Saved without an id: Building', 'Moved: Ready', 'Unstarted: Ready',
+    ]);
+    expect(wrapper.get('[aria-label="Filter tasks by status"]').findAll('button').map(button => button.attributes('aria-label'))).toStrictEqual([
+      'All · 7', 'Up next · 2', 'In progress · 3', 'Awaiting review · 2', 'Blocked · 0', 'Done · 0',
+    ]);
+  });
+
   it('keeps failed and running implementation tickets recoverable from their repository lane', async () => {
     const mission = missionWithRun('accepted', true);
     mission.stage = 'implementation';
