@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
-import { AgentGitService, parseBranchStatus, parseChangedFiles, parseCommitSummaries, parseNumstat, parsePorcelainFiles } from '../agent-git-service';
+import { AgentGitService, parseBranchStatus, parseChangedFiles, parseCommitSummaries, parseNumstat, parsePorcelainFiles, untrackedNumstatConcurrency } from '../agent-git-service';
 
 describe('agent git service parsers', () => {
   it('projects lockfile contributions across real Git scopes without removing files from operations', async () => {
@@ -241,6 +241,180 @@ describe('agent git service parsers', () => {
       changedFiles: 2,
       hasUntracked: true,
       state: 'dirty',
+    });
+  });
+
+  it('starts only a few per-file commands at once for untracked files, across every checkout and read', async () => {
+    const checkouts: Record<string, string[]> = {
+      '/repo-a': Array.from({ length: 64 }, (_, index) => `src/a-${index}.ts`),
+      '/repo-b': Array.from({ length: 40 }, (_, index) => `src/b-${index}.ts`),
+      '/repo-c': Array.from({ length: 24 }, (_, index) => `src/c-${index}.ts`),
+    };
+    let outstanding = 0;
+    let peak = 0;
+    const runGit = async (folder: string, args: string[]) => {
+      const paths = checkouts[folder]!;
+      if (args[0] === 'status') {
+        return { stdout: args.includes('-z') ? paths.map(path => `?? ${path}\0`).join('') : `## main\n${paths.map(path => `?? ${path}\n`).join('')}` };
+      }
+      if (args[0] === 'ls-files') return { stdout: paths.map(path => `${path}\0`).join('') };
+      if (args.includes('--no-index')) {
+        peak = Math.max(peak, ++outstanding);
+        // A git process outlives the tick that started it.
+        await new Promise<void>((resolve) => { setImmediate(resolve); });
+        outstanding -= 1;
+        return { stdout: `3\t0\t${args.at(-1)}\n` };
+      }
+      return { stdout: '' };
+    };
+    const service = new AgentGitService(() => new Date('2026-08-01T00:00:00.000Z'), runGit);
+
+    const [first, second, workflow] = await Promise.all([service.status('/repo-a'), service.status('/repo-b'), service.workflow('/repo-c')]);
+
+    expect([first.addedLines, second.addedLines, workflow.untrackedAddedLines]).toStrictEqual([192, 120, 72]);
+    expect(peak).toBe(untrackedNumstatConcurrency);
+  });
+
+  /** A checkout whose first status read stays in progress, after listing its untracked files, until it is finished. */
+  function checkoutHoldingItsFirstRead() {
+    let finishFirstRead!: () => void;
+    let firstReadListed!: () => void;
+    const finished = new Promise<void>((resolve) => { finishFirstRead = resolve; });
+    const listed = new Promise<void>((resolve) => { firstReadListed = resolve; });
+    let measuring = 0;
+    const checkout = {
+      untracked: ['src/new.ts'],
+      reads: 0,
+      mostMeasuringAtOnce: 0,
+      listed,
+      finishFirstRead,
+      runGit: async (_folder: string, args: string[]) => {
+        if (args[0] === 'status') {
+          checkout.reads += 1;
+          return { stdout: `## main\n${checkout.untracked.map(path => `?? ${path}\n`).join('')}` };
+        }
+        if (args[0] === 'ls-files') return { stdout: checkout.untracked.map(path => `${path}\0`).join('') };
+        if (args.includes('--no-index')) {
+          checkout.mostMeasuringAtOnce = Math.max(checkout.mostMeasuringAtOnce, ++measuring);
+          if (checkout.reads === 1) {
+            firstReadListed();
+            await finished;
+          } else {
+            // A git process outlives the tick that started it.
+            await new Promise<void>((resolve) => { setImmediate(resolve); });
+          }
+          measuring -= 1;
+          return { stdout: `5\t0\t${args.at(-1)}\n` };
+        }
+        return { stdout: '' };
+      },
+    };
+    return checkout;
+  }
+
+  it('answers the requests made during a status read with one shared read that starts after it', async () => {
+    const checkout = checkoutHoldingItsFirstRead();
+    const service = new AgentGitService(() => new Date('2026-08-01T00:00:00.000Z'), checkout.runGit);
+
+    const first = service.status('/repo');
+    await checkout.listed;
+    const second = service.status('/repo');
+    const third = service.status('/repo');
+    await new Promise<void>((resolve) => { setImmediate(resolve); });
+    expect(checkout.reads).toBe(1);
+
+    checkout.finishFirstRead();
+    const [firstStatus, secondStatus, thirdStatus] = await Promise.all([first, second, third]);
+    expect(checkout.reads).toBe(2);
+    expect(firstStatus).toMatchObject({ changedFiles: 1, addedLines: 5 });
+    expect(thirdStatus).toStrictEqual(secondStatus);
+    // Each agent stores the status it receives, so two agents must not end up holding one object.
+    expect(thirdStatus).not.toBe(secondStatus);
+
+    await service.status('/repo');
+    expect(checkout.reads).toBe(3);
+  });
+
+  it('reports a file created during a status read to a request made at that moment', async () => {
+    const checkout = checkoutHoldingItsFirstRead();
+    const service = new AgentGitService(() => new Date('2026-08-01T00:00:00.000Z'), checkout.runGit);
+
+    const earlier = service.status('/repo');
+    await checkout.listed;
+    checkout.untracked.push('src/later.ts');
+    const later = service.status('/repo');
+    checkout.finishFirstRead();
+
+    await expect(earlier).resolves.toMatchObject({ changedFiles: 1, addedLines: 5 });
+    await expect(later).resolves.toMatchObject({ changedFiles: 2, addedLines: 10 });
+  });
+
+  it('reads a checkout once at a time, even for a request made the moment a read is answered', async () => {
+    const checkout = checkoutHoldingItsFirstRead();
+    const service = new AgentGitService(() => new Date('2026-08-01T00:00:00.000Z'), checkout.runGit);
+
+    const answeredThenAskingAgain = service.status('/repo').then(() => service.status('/repo'));
+    await checkout.listed;
+    const waiting = service.status('/repo');
+    checkout.finishFirstRead();
+    await Promise.all([answeredThenAskingAgain, waiting]);
+
+    // The checkout has one untracked file, so each read measures one file.
+    expect(checkout.mostMeasuringAtOnce).toBe(1);
+  });
+
+  it('still answers the requests waiting behind a status read that fails', async () => {
+    const now = vi.fn(() => new Date('2026-08-01T00:00:00.000Z'));
+    now.mockImplementationOnce(() => { throw new Error('clock unavailable'); });
+    const runGit = async (_folder: string, args: string[]) => {
+      if (args[0] === 'status') return { stdout: '## main\n?? src/new.ts\n' };
+      if (args[0] === 'ls-files') return { stdout: 'src/new.ts\0' };
+      if (args.includes('--no-index')) return { stdout: '5\t0\tsrc/new.ts\n' };
+      return { stdout: '' };
+    };
+    const service = new AgentGitService(now, runGit);
+
+    const [failed, waiting] = await Promise.allSettled([service.status('/repo'), service.status('/repo')]);
+
+    expect(failed).toMatchObject({ status: 'rejected', reason: new Error('clock unavailable') });
+    expect(waiting).toMatchObject({ status: 'fulfilled', value: { state: 'dirty', changedFiles: 1, addedLines: 5 } });
+  });
+
+  it('counts an untracked file that cannot be measured as changed without lines and still measures the others', async () => {
+    const unreadable = Array.from({ length: untrackedNumstatConcurrency + 1 }, (_, index) => `src/unreadable-${index}.ts`);
+    const lines: Record<string, number> = { 'src/app.ts': 10, 'src/app.spec.ts': 4, 'README.md': 3, 'package-lock.json': 20 };
+    const untracked = [...unreadable, ...Object.keys(lines)];
+    const runGit = async (_folder: string, args: string[]) => {
+      if (args[0] === 'status') return { stdout: `## main\n${untracked.map(path => `?? ${path}\n`).join('')}` };
+      if (args[0] === 'ls-files') return { stdout: untracked.map(path => `${path}\0`).join('') };
+      if (args.includes('--no-index')) {
+        const path = args.at(-1)!;
+        if (!(path in lines)) throw new Error('unreadable');
+        return { stdout: `${lines[path]}\t0\t/dev/null => ${path}\n` };
+      }
+      return { stdout: '' };
+    };
+    const service = new AgentGitService(() => new Date('2026-08-01T00:00:00.000Z'), runGit);
+    const none = { addedLines: 0, removedLines: 0, changedFiles: 0 };
+
+    const status = await service.status('/repo');
+
+    expect(status.diffCatalog?.unstaged).toStrictEqual({
+      addedLines: 37,
+      removedLines: 0,
+      changedFiles: untracked.length,
+      byKind: {
+        code: { addedLines: 10, removedLines: 0, changedFiles: unreadable.length + 1 },
+        test: { addedLines: 4, removedLines: 0, changedFiles: 1 },
+        docs: { addedLines: 3, removedLines: 0, changedFiles: 1 },
+        other: { addedLines: 20, removedLines: 0, changedFiles: 1 },
+      },
+      lockfiles: {
+        addedLines: 20,
+        removedLines: 0,
+        changedFiles: 1,
+        byKind: { code: none, test: none, docs: none, other: { addedLines: 20, removedLines: 0, changedFiles: 1 } },
+      },
     });
   });
 

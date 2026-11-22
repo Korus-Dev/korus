@@ -22,6 +22,8 @@ const execFileAsync = promisify(execFile);
 export type AgentGitServiceClock = () => Date;
 export type AgentGitRunner = (cwd: string, args: string[]) => Promise<{ stdout: string }>;
 type AgentGitWorktreeCreator = (input: GitWorktreeCreateInput) => Promise<{ path: string }>;
+/** The status read running on a checkout, and the one waiting to start after it. */
+type CheckoutStatusReads = { current: Promise<AgentGitStatus>; next?: Promise<AgentGitStatus> };
 
 export type AgentGitMergeResult = {
   targetFolder: string;
@@ -37,6 +39,8 @@ export class AgentGitService {
   readonly history = new AgentGitHistoryService();
   readonly pruning: GitPruneService;
   private settings: () => GitSettings = () => normalizeGitSettings(undefined);
+  private readonly statusReads = new Map<string, CheckoutStatusReads>();
+  private readonly untrackedNumstatSlots = concurrencyLimit(untrackedNumstatConcurrency);
 
   setSettingsProvider(provider: () => GitSettings): void { this.settings = provider; }
 
@@ -90,6 +94,24 @@ export class AgentGitService {
   }
 
   async status(folder: string): Promise<AgentGitStatus> {
+    const reads = this.statusReads.get(folder);
+    if (!reads) return this.startStatusRead(folder);
+    // A read in progress may have looked at the checkout before this request was made, so it cannot answer it.
+    // The requests made meanwhile share one read that starts when it finishes, whether or not it succeeded.
+    reads.next ??= reads.current.catch(() => undefined).then(() => this.startStatusRead(folder));
+    return structuredClone(await reads.next);
+  }
+
+  private startStatusRead(folder: string): Promise<AgentGitStatus> {
+    const reads: CheckoutStatusReads = { current: this.readStatus(folder) };
+    this.statusReads.set(folder, reads);
+    // The read waiting behind this one takes over the checkout's entry when it starts.
+    const finished = () => { if (!reads.next) this.statusReads.delete(folder); };
+    reads.current.then(finished, finished);
+    return reads.current;
+  }
+
+  private async readStatus(folder: string): Promise<AgentGitStatus> {
     const updatedAt = this.now().toISOString();
     try {
       const [statusResult, stagedNumstat, unstagedNumstat, untrackedFilesResult, commonDirectoryResult, remotesResult] = await Promise.all([
@@ -103,7 +125,7 @@ export class AgentGitService {
       const branch = parseBranchStatus(statusResult.stdout);
       const stagedDiff = parseNumstatSummary(stagedNumstat.stdout);
       const unstagedDiff = parseNumstatSummary(unstagedNumstat.stdout);
-      const untrackedDiff = await untrackedNumstat(this.runGit, folder, untrackedFilesResult.stdout.split('\0').filter(Boolean));
+      const untrackedDiff = await untrackedNumstat(this.runGit, this.untrackedNumstatSlots, folder, untrackedFilesResult.stdout.split('\0').filter(Boolean));
       const trackedUncommitted = await this.runGit(folder, ['diff', 'HEAD', '--numstat', '--'])
         .then((result) => parseNumstatSummary(result.stdout))
         .catch(() => combineSummaries(stagedDiff, unstagedDiff));
@@ -289,7 +311,7 @@ export class AgentGitService {
     for (const file of paths) {
       diffs.push((await this.runGit(folder, ['diff', '--no-index', '--no-ext-diff', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', file])).stdout);
     }
-    return { diff: joinDiffOutputs(diffs), summary: { ...await untrackedNumstat(this.runGit, folder, paths), changedFiles: paths.length } };
+    return { diff: joinDiffOutputs(diffs), summary: { ...await untrackedNumstat(this.runGit, this.untrackedNumstatSlots, folder, paths), changedFiles: paths.length } };
   }
 
   private async assertCommitRef(folder: string, ref: string): Promise<void> {
@@ -386,7 +408,7 @@ export class AgentGitService {
     const branchStatus = parseBranchStatus(branchStatusResult.stdout);
     const stagedDiff = parseNumstat(stagedNumstat.stdout);
     const unstagedDiff = parseNumstat(unstagedNumstat.stdout);
-    const untrackedDiff = await untrackedNumstat(this.runGit, folder, files.filter((file) => file.indexStatus === '?').map((file) => file.path));
+    const untrackedDiff = await untrackedNumstat(this.runGit, this.untrackedNumstatSlots, folder, files.filter((file) => file.indexStatus === '?').map((file) => file.path));
     const repositoryFolder = root.stdout.trim();
     const worktrees = parseWorktrees(worktreeList.stdout);
     const currentWorktreeIndex = worktrees.findIndex((item) => resolve(item.path) === resolve(repositoryFolder));
@@ -902,10 +924,37 @@ export function parseCommitSummaries(output: string): AgentGitCommitSummary[] {
   }).filter((commit) => Boolean(commit.sha));
 }
 
-async function untrackedNumstat(runGit: AgentGitRunner, folder: string, paths: string[]): Promise<AgentGitDiffSummary> {
+/**
+ * Counting the lines of an untracked file costs one git process, and starting a process blocks the daemon for a
+ * moment. Only this many run at once, across every checkout a service reads, so the daemon keeps answering while
+ * a checkout with many untracked files is measured.
+ */
+export const untrackedNumstatConcurrency = 8;
+
+type ConcurrencyLimit = <T>(task: () => Promise<T>) => Promise<T>;
+
+/** Runs at most `limit` tasks at once; the others wait their turn in arrival order. */
+function concurrencyLimit(limit: number): ConcurrencyLimit {
+  let running = 0;
+  const waiting: Array<() => void> = [];
+  return async (task) => {
+    // A finished task hands its slot straight to the next one waiting.
+    if (running < limit) running += 1;
+    else await new Promise<void>((resolve) => { waiting.push(resolve); });
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else running -= 1;
+    }
+  };
+}
+
+async function untrackedNumstat(runGit: AgentGitRunner, slots: ConcurrencyLimit, folder: string, paths: string[]): Promise<AgentGitDiffSummary> {
   const results = await Promise.all(paths.map(async (filePath) => {
     try {
-      return { filePath, ...parseNumstat((await runGit(folder, ['diff', '--no-index', '--numstat', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', filePath])).stdout) };
+      return { filePath, ...parseNumstat((await slots(() => runGit(folder, ['diff', '--no-index', '--numstat', '--', process.platform === 'win32' ? 'NUL' : '/dev/null', filePath]))).stdout) };
     } catch {
       return { filePath, addedLines: 0, removedLines: 0 };
     }
