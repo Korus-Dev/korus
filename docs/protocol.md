@@ -102,10 +102,23 @@ notifications while reading `snapshot/get`, discard snapshot-owned events at or 
 `lastEventSeq`, apply only contiguous events above it. Provider frames received during or after
 a synchronization barrier retain their own revision checks: the product snapshot cannot
 replace their transcript data. A gap triggers a fresh
-barrier. After a global gap the renderer also invalidates previously cached provider frames
-and re-requests conversation snapshots (including inactive and split-pane ones),
-because an app snapshot cannot replace a missed provider completion event.
+barrier, with one exception: a gap revealed by an incoming live `snapshot.updated` that
+carries a complete snapshot and its `clientState` is repaired from that event, since a
+read would return the same state. Electron then publishes a client-sourced snapshot
+naming the backend sequence it is current to (`lastBackendEventSeq`), and a window
+continues from it without reading the state again. A gap found while replaying the
+events buffered behind a barrier always starts another read. After any repair the renderer treats cached provider
+frames as possibly behind, because an app snapshot cannot replace a missed provider
+completion event: conversations on screen are re-requested at once, the others when
+they are shown or when their next frame arrives.
 Clients ignore unknown event types.
+
+A transport under backpressure keeps only the newest of the snapshots queued back to
+back, never moving it ahead of another event. When the survivor directly follows the
+snapshot it replaced, it carries `coveredFromSeq`, the first sequence it stands in for,
+and a receiver treats the sequences from there to its own as delivered
+(`continuesEventSequence`). When an event between the two was dropped for lack of
+room, the survivor carries no such claim and the receiver sees the gap.
 
 Provider conversations travel as one bounded reset followed by revisioned deltas in
 `codex.conversation*`, `claude.conversation*` and `antigravity.conversation*` frames.

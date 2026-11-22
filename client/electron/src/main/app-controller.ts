@@ -34,6 +34,7 @@ import { getDaemonStatus, refreshDaemon, setDaemonEnabled } from './daemon-launc
 import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
 import { isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { decodeAppSnapshot, isClientState, type DecodedAppSnapshot } from '@workspace/core/snapshot-guards';
+import { continuesEventSequence } from '@workspace/core/event-sequence';
 import { applyMainEventToSnapshot, replaceAppSnapshot } from '@workspace/core/snapshot';
 import { spokenAnnouncementVoices, type AddSshConnectionInput, type AgentFilePreviewResult, type AgentFileSearchItem, type ApprovalPreset, type AppCommand, type AppPluginStatus, type AppSnapshot, type ProviderConnectionState, type ProviderModelOption, type ProviderPluginSummary, type ProviderSkillSummary, type BrowserAnnotation, type BrowserBounds, type BrowserState, type BrowserViewportBounds, type DaemonStatus, type CodexResourceSharingStatus, type ConversationListInput, type ConversationResumeTarget, type ConversationSummary, type CreateAgentInput, type CreateAutomationInput, type CreateQuickChatInput, type CreateSourceWorktreeInput, type CreateTeamInput, type ClientState, type DesktopUpdateStatus, type DuplicateAgentOptions, type AutomationLocation, type MainToRendererEvent, type MoveAgentToTeamInput, type OpenInApplication, type OpenInApplicationCatalog, type RendererMessage, type RendererSendPromptOptions, type RendererSnapshotState, type ReorderAgentsInput, type ReorderRepositoriesInput, type ReorderTeamsInput, type SendPromptOptions, type SetCodexResourceSharingInput, type SourceFolderListing, type SourceFolderListInput, type SourceRepository, type SourceWorktree, type SpokenAnnouncementQueueResult, type SpokenAnnouncementVoice, type SshHostCandidate, type SystemPermissionsStatus, type UpdateAgentInput, type UpdateAutomationInput, type UpdateRemoteConnectionInput, type UpdateSettingsInput, type UpdateTeamInput, type WorkBacklogConfigurationInput, type WorkItem, type WorkProviderConnectResult, type WorkProviderKind, type WorkSource } from '@workspace/core/contracts';
 import { ipcChannels, type AppIpcEvents, type AppIpcRequests } from '@workspace/core/ipc';
@@ -107,10 +108,11 @@ export class AppController {
   private readonly localMediaRegistry = new LocalMediaRegistry();
   private readonly nativeAttachmentRegistry = new LocalMediaAttachmentRegistry(this.localMediaRegistry);
   private lastBackendEventSeq = 0;
+  /** Bumped whenever the client state is set or a refresh starts, so a refresh that answers late is ignored. */
+  private clientStateRevision = 0;
   private clientEventSeq = 0;
   private backendEventBuffer: AppBackendEvent[] | null = null;
   private backendSynchronization: Promise<AppSnapshot> | null = null;
-  private readonly transientSnapshots = new Set<AppSnapshot>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempt = 0;
   private shuttingDown = false;
@@ -1451,14 +1453,13 @@ export class AppController {
     this.mobileSimulator.retainAgents(this.snapshot?.agents.map(agent => agent.id) ?? []);
     this.policyAwareSpokenAnnouncements.refresh();
     this.syncNativeAppearance();
-    this.transientSnapshots.add(snapshot);
-    try {
-      await this.refreshClientStateFromBackend();
-      return withRendererMediaUrls(snapshot, this.localMediaRegistry);
-    } finally {
-      this.transientSnapshots.delete(snapshot);
-      this.refreshDebugMenuIfChanged(previousDebugMenuState);
-    }
+    // Every backend event already carries the client state. This read only covers an event that never arrives, so
+    // the reply does not wait for it: its small answer would queue behind every large frame on the connection.
+    void this.refreshClientStateFromBackend().catch((error) => warnMain('daemon', 'client state refresh failed', {
+      detail: error instanceof Error ? error.message : String(error),
+    }));
+    this.refreshDebugMenuIfChanged(previousDebugMenuState);
+    return withRendererMediaUrls(snapshot, this.localMediaRegistry);
   }
 
   private async adoptBackendMutationSnapshot(nextSnapshot: AppSnapshot): Promise<AppSnapshot> {
@@ -1869,6 +1870,7 @@ export class AppController {
       this.mobileSimulator.retainAgents(this.snapshot?.agents.map(agent => agent.id) ?? []);
       this.policyAwareSpokenAnnouncements.refresh();
       this.clientState = backendState.clientState;
+      this.clientStateRevision += 1;
       this.lastBackendEventSeq = backendState.lastEventSeq;
       const buffered = this.backendEventBuffer;
       this.backendEventBuffer = [];
@@ -1883,7 +1885,7 @@ export class AppController {
           }
           continue;
         }
-        if (event.seq !== this.lastBackendEventSeq + 1) {
+        if (!continuesEventSequence(this.lastBackendEventSeq, event)) {
           gap = true;
           break;
         }
@@ -1908,7 +1910,11 @@ export class AppController {
   }
 
   private async refreshClientStateFromBackend(): Promise<void> {
-    this.clientState = await this.requireBackendClient().request<ClientState>(backendMethods.clientStateGet);
+    const revision = ++this.clientStateRevision;
+    const clientState = await this.requireBackendClient().request<ClientState>(backendMethods.clientStateGet);
+    // An event, a read or a later refresh has since said what the state is; this answer is older than that.
+    if (revision !== this.clientStateRevision) return;
+    this.clientState = clientState;
     this.syncPowerSaveBlocker();
   }
 
@@ -2189,14 +2195,25 @@ export class AppController {
       return;
     }
     if (event.seq <= this.lastBackendEventSeq) { this.forwardProviderFrame(event); return; }
-    if (event.seq !== this.lastBackendEventSeq + 1) {
+    if (!continuesEventSequence(this.lastBackendEventSeq, event)) {
+      if (event.type === 'snapshot.updated' && isClientState(event.clientState) && decodeSnapshotFromBackendEvent(event)) {
+        // The events in between are lost, but this snapshot and its client state are the complete state: continue from it
+        // rather than reading the same state again. Windows reload the conversations that may have missed frames.
+        warnMain('daemon', 'backend event sequence gap; continuing from the delivered snapshot', {
+          expected: this.lastBackendEventSeq + 1,
+          received: event.seq,
+        });
+        this.applyBackendEvent(event, false);
+        this.emitSnapshotToRenderer(this.snapshot ?? undefined, event.seq);
+        return;
+      }
       warnMain('daemon', 'backend event sequence gap; synchronizing snapshot', {
         expected: this.lastBackendEventSeq + 1,
         received: event.seq,
       });
       this.backendEventBuffer = [event];
       void this.synchronizeBackendState()
-        .then((snapshot) => this.emitSnapshotToRenderer(snapshot))
+        .then((snapshot) => this.emitSnapshotToRenderer(snapshot, this.lastBackendEventSeq))
         .catch((error) => this.handleBackendDisconnect(error instanceof Error ? error : new Error(String(error))));
       return;
     }
@@ -2213,10 +2230,6 @@ export class AppController {
     const previousDebugMenuState = this.debugMenuState();
     const rendererEvent = eventForRenderer(event);
     const decodedSnapshot = decodeSnapshotFromBackendEvent(event);
-    for (const snapshot of this.transientSnapshots) {
-      if (decodedSnapshot) overwriteAppSnapshot(snapshot, decodedSnapshot.value);
-      else if (event.type !== 'snapshot.updated') applyMainEventToSnapshot(snapshot, rendererEvent);
-    }
     if (decodedSnapshot) {
       this.snapshot = decodedSnapshot.value;
     } else if (this.snapshot) {
@@ -2226,6 +2239,7 @@ export class AppController {
     this.policyAwareSpokenAnnouncements.refresh();
     if (isClientState(event.clientState)) {
       this.clientState = event.clientState;
+      this.clientStateRevision += 1;
     }
 
     this.lastBackendEventSeq = event.seq;
@@ -2287,12 +2301,13 @@ export class AppController {
     });
   }
 
-  private emitSnapshotToRenderer(snapshot?: AppSnapshot): void {
+  private emitSnapshotToRenderer(snapshot?: AppSnapshot, lastBackendEventSeq?: number): void {
     if (snapshot) {
       this.emitClientEvent({
         type: 'snapshot.updated',
         payload: snapshot,
         snapshot,
+        ...(lastBackendEventSeq === undefined ? {} : { lastBackendEventSeq }),
       });
     } else if (this.snapshot) {
       this.emitClientEvent({
@@ -2664,14 +2679,6 @@ export function shouldBlockDisplaySleep(clientState: ClientState, isOnBattery: b
 
 export function requiresSingleInstanceLock(isPackaged: boolean, developmentScheme?: string): boolean {
   return isPackaged || Boolean(developmentScheme);
-}
-
-function overwriteAppSnapshot(target: AppSnapshot, source: AppSnapshot): void {
-  const mutableTarget = target as unknown as Record<string, unknown>;
-  for (const key of Object.keys(mutableTarget)) {
-    if (!(key in source)) delete mutableTarget[key];
-  }
-  Object.assign(target, source);
 }
 
 function isRemoteAutomationLocation(location: AutomationLocation | undefined): location is Extract<AutomationLocation, { kind: 'remote' }> {

@@ -387,6 +387,86 @@ describe('useAppState', () => {
     expect(state.activeAgent.value?.id).toBe('agent-jesse');
   });
 
+  it('applies a snapshot that stands in for merged events without reading the state again', async () => {
+    let receive!: (event: MainToRendererEvent) => void;
+    const backendSnapshot = createInitialSnapshot();
+    const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: structuredClone(backendSnapshot), lastBackendEventSeq: 1, connection: { status: 'connected' } });
+    stubElectronTestWindow({ app: { getSnapshotState, onEvent: listener => { receive = listener; return () => {}; } } satisfies Partial<AppApi> });
+    const state = useAppState();
+    await state.loadSnapshot();
+    const merged = structuredClone(backendSnapshot);
+    merged.agents[0]!.name = 'Renamed while queued';
+
+    receive({ seq: 4, coveredFromSeq: 2, source: 'provider', type: 'snapshot.updated', payload: merged, occurredAt: '2026-06-05T00:00:04.000Z' });
+    receive({ seq: 5, source: 'provider', agentId: merged.agents[0]!.id, type: 'agent.statusChanged', payload: { type: 'working' }, occurredAt: '2026-06-05T00:00:05.000Z' });
+    await nextTick();
+
+    expect(getSnapshotState).toHaveBeenCalledTimes(1);
+    expect(state.snapshot.value.agents[0]).toMatchObject({ name: 'Renamed while queued', status: { type: 'working' } });
+  });
+
+  it('continues from a snapshot the desktop repaired and reloads only the conversations on screen', async () => {
+    let receive!: (event: MainToRendererEvent) => void;
+    const backendSnapshot = createInitialSnapshot();
+    const [shown, hidden] = backendSnapshot.agents;
+    shown!.providerSession = { kind: 'codex', conversationId: 'shown-conversation' };
+    hidden!.providerSession = { kind: 'codex', conversationId: 'hidden-conversation' };
+    backendSnapshot.activeAgentId = shown!.id;
+    const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: structuredClone(backendSnapshot), lastBackendEventSeq: 1, connection: { status: 'connected' } });
+    // What the desktop holds when a conversation load returns; loads answer with it, as the desktop does.
+    let desktopSnapshot = backendSnapshot;
+    const loadConversationHistory = vi.fn(async (_agentId: string, _options?: { recovery?: boolean }) => structuredClone(desktopSnapshot));
+    const selectAgent = vi.fn(async (agentId: string) => ({ ...structuredClone(desktopSnapshot), activeAgentId: agentId }));
+    stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory, selectAgent,
+      onEvent: listener => { receive = listener; return () => {}; } } satisfies Partial<AppApi> });
+    const state = useAppState();
+    await state.loadSnapshot();
+    receive(sessionSnapshotEvent(shown!.id, sessionState(), { seq: 2, conversation: 'shown-conversation' }));
+    receive(sessionSnapshotEvent(hidden!.id, sessionState(), { seq: 3, conversation: 'hidden-conversation' }));
+    await vi.waitFor(() => expect(state.isHydratingActiveAgentHistory.value).toBe(false));
+    loadConversationHistory.mockClear();
+    const repaired = structuredClone(backendSnapshot);
+    repaired.agents[0]!.name = 'Renamed during the gap';
+    desktopSnapshot = structuredClone(repaired);
+    desktopSnapshot.agents[0]!.status = { type: 'working' };
+
+    receive({ seq: 1, source: 'client', type: 'snapshot.updated', payload: repaired, snapshot: repaired, lastBackendEventSeq: 9, occurredAt: '2026-06-05T00:00:09.000Z' });
+    receive({ seq: 10, source: 'provider', agentId: shown!.id, type: 'agent.statusChanged', payload: { type: 'working' }, occurredAt: '2026-06-05T00:00:10.000Z' });
+
+    await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledWith(shown!.id, { recovery: true }));
+    expect(getSnapshotState).toHaveBeenCalledTimes(1);
+    expect(state.snapshot.value.agents[0]).toMatchObject({ name: 'Renamed during the gap', status: { type: 'working' } });
+    expect(loadConversationHistory.mock.calls.map(([agentId]) => agentId)).toStrictEqual([shown!.id]);
+
+    // The conversation that was off screen catches up when it is opened.
+    await state.selectAgent(hidden!.id);
+
+    await vi.waitFor(() => expect(loadConversationHistory.mock.calls.map(([agentId]) => agentId)).toContain(hidden!.id));
+  });
+
+  it('reloads a conversation on screen that never received a frame after a repair', async () => {
+    let receive!: (event: MainToRendererEvent) => void;
+    const backendSnapshot = createInitialSnapshot();
+    const [active, split] = backendSnapshot.agents;
+    active!.providerSession = { kind: 'codex', conversationId: 'active-conversation' };
+    split!.providerSession = { kind: 'codex', conversationId: 'split-conversation' };
+    backendSnapshot.activeAgentId = active!.id;
+    const getSnapshotState = vi.fn().mockResolvedValue({ snapshot: structuredClone(backendSnapshot), lastBackendEventSeq: 1, connection: { status: 'connected' } });
+    const loadConversationHistory = vi.fn(async (_agentId: string, _options?: { recovery?: boolean }) => structuredClone(backendSnapshot));
+    stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory,
+      onEvent: listener => { receive = listener; return () => {}; } } satisfies Partial<AppApi> });
+    const state = useAppState();
+    await state.loadSnapshot();
+    state.setVisibleAgentIds([active!.id, split!.id]);
+    receive(sessionSnapshotEvent(active!.id, sessionState(), { seq: 2, conversation: 'active-conversation' }));
+    await vi.waitFor(() => expect(state.isHydratingActiveAgentHistory.value).toBe(false));
+    loadConversationHistory.mockClear();
+
+    receive({ seq: 1, source: 'client', type: 'snapshot.updated', payload: structuredClone(backendSnapshot), lastBackendEventSeq: 9, occurredAt: '2026-06-05T00:00:09.000Z' });
+
+    await vi.waitFor(() => expect(loadConversationHistory).toHaveBeenCalledWith(split!.id, { recovery: true }));
+  });
+
   it('shows the shell before persisted history hydration completes', async () => {
     const remoteSnapshot = createInitialSnapshot();
     remoteSnapshot.agents[0].providerSession = { kind: 'codex', conversationId: 'thread-persisted' };

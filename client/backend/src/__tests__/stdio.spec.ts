@@ -303,28 +303,70 @@ describe('stdio JSON-RPC transport', () => {
     peer.stop();
   });
 
-  it('coalesces queued snapshot notifications while preserving ordinary events', () => {
+  it('merges back-to-back queued snapshots without reordering events and marks the sequences the survivor covers', () => {
     const input = new PassThrough();
-    const output = new PassThrough({ highWaterMark: 1 });
-    const writes: string[] = [];
-    output.on('data', (chunk) => writes.push(chunk.toString()));
+    const frames: string[] = [];
+    let accepting = false;
+    const output = Object.assign(new PassThrough(), {
+      write: (chunk: string) => { frames.push(String(chunk)); return accepting; },
+    }) as unknown as PassThrough;
     const peer = new StdioRpcPeer({
       input,
       output,
       onMessage: () => undefined,
     });
     peer.start();
+    const snapshot = (seq: number) => ({ seq, type: 'snapshot.updated', payload: `state-${seq}` });
 
-    peer.notify('backend/event/notify', { type: 'snapshot.updated', snapshot: 'first' });
-    peer.notify('backend/event/notify', { type: 'snapshot.updated', snapshot: 'second' });
-    peer.notify('backend/event/notify', { type: 'backend.event', value: 'keep' });
-    output.emit('drain');
+    try {
+      // The first frame is written at once and leaves the stream backpressured; the rest queue.
+      peer.notify('backend/event/notify', snapshot(1));
+      peer.notify('backend/event/notify', snapshot(2));
+      peer.notify('backend/event/notify', snapshot(3));
+      peer.notify('backend/event/notify', { seq: 4, type: 'turn.completed' });
+      peer.notify('backend/event/notify', snapshot(5));
+      peer.notify('backend/event/notify', snapshot(6));
+      peer.notify('backend/event/notify', snapshot(7));
+      accepting = true;
+      output.emit('drain');
 
-    const outputText = writes.join('');
-    expect(outputText).toContain('second');
-    expect(outputText.match(/"snapshot":"first"/g)).toHaveLength(1);
-    expect(outputText).toContain('keep');
-    peer.stop();
+      expect(frames.map(frame => JSON.parse(frame).params)).toStrictEqual([
+        snapshot(1),
+        { ...snapshot(3), coveredFromSeq: 2 },
+        { seq: 4, type: 'turn.completed' },
+        { ...snapshot(7), coveredFromSeq: 5 },
+      ]);
+    } finally {
+      peer.stop();
+    }
+  });
+
+  it('replaces a queued snapshot with a later one without claiming the sequences between them once an event was dropped', () => {
+    const input = new PassThrough();
+    const frames: string[] = [];
+    let accepting = false;
+    const output = Object.assign(new PassThrough(), {
+      write: (chunk: string) => { frames.push(String(chunk)); return accepting; },
+    }) as unknown as PassThrough;
+    const snapshot = (seq: number) => ({ seq, type: 'snapshot.updated', payload: `state-${seq}` });
+    const frameBytes = Buffer.byteLength(`${JSON.stringify({ jsonrpc: '2.0', method: 'backend/event/notify', params: snapshot(2) })}\n`);
+    // Room for one queued snapshot: the patch that follows it overflows and is dropped.
+    const peer = new StdioRpcPeer({ input, output, maxBufferedOutputBytes: frameBytes + 10, onMessage: () => undefined });
+    peer.start();
+
+    try {
+      peer.notify('backend/event/notify', snapshot(1));
+      peer.notify('backend/event/notify', snapshot(2));
+      peer.notify('backend/event/notify', { seq: 3, type: 'conversation.sessionPatch', agentId: 'agent-1', payload: 'lost' });
+      peer.notify('backend/event/notify', snapshot(4));
+      accepting = true;
+      output.emit('drain');
+
+      // The latest state arrives, and nothing claims to cover the lost sequence 3: the receiver sees a gap.
+      expect(frames.map(frame => JSON.parse(frame).params)).toStrictEqual([snapshot(1), snapshot(4)]);
+    } finally {
+      peer.stop();
+    }
   });
 
   it('bounds queued notifications instead of allowing an unbounded writable buffer', () => {

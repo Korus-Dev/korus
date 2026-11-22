@@ -646,6 +646,25 @@ describe('controller desktop lifecycle', () => {
     ]);
   });
 
+  it('answers a mutation without waiting for the client state refresh, and survives its failure', async () => {
+    const { provider, state } = setup();
+    let failRefresh!: (error: Error) => void;
+    provider.request.mockImplementation(method => method === 'agent/codeReview/manual'
+      ? Promise.resolve(state.snapshot)
+      : new Promise((_resolve, reject) => { failRefresh = reject; }));
+    await import('../../preload/index');
+    const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    let answer: unknown;
+
+    void api.switchCodeReviewToManual('reviewer', 'review').then(snapshot => { answer = snapshot; });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(answer).toStrictEqual(state.snapshot);
+
+    failRefresh(new Error('daemon request timed out: client/state/get'));
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
   it('limits the simulator to local agents through IPC and revokes control on disconnect', async () => {
     const { controller, state, window, disconnect } = setup();
     const agentId = state.snapshot.agents[0]!.id;
@@ -1211,6 +1230,113 @@ describe('controller desktop lifecycle', () => {
     const sent = window.webContents.send.mock.calls.length;
     emit(event(4));
     expect(window.webContents.send).toHaveBeenCalledTimes(sent);
+  });
+
+  it('applies a snapshot that stands in for merged snapshots without reading the daemon again', async () => {
+    const { controller, provider, state, emit, window } = setup();
+    controller.createWindow();
+    await controller.initialize();
+    const daemonReads = () => provider.request.mock.calls.filter(([method]) => method === 'snapshot/get').length;
+    const readsAfterStartup = daemonReads();
+    const merged = structuredClone(state.snapshot);
+    merged.agents[0]!.name = 'Renamed while queued';
+
+    emit({ seq: 3, coveredFromSeq: 1, occurredAt: '2026-10-04T00:00:00Z', type: 'snapshot.updated', payload: merged });
+    emit({ seq: 4, occurredAt: '2026-10-04T00:00:01Z', type: 'agent.statusChanged', agentId: merged.agents[0]!.id, payload: { type: 'working' } });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(daemonReads()).toBe(readsAfterStartup);
+    const forwarded = window.webContents.send.mock.calls.filter(([channel]) => channel === ipcChannels.event).map(([, event]) => event);
+    expect(forwarded.slice(-2)).toStrictEqual([
+      expect.objectContaining({ seq: 3, coveredFromSeq: 1, source: 'provider', type: 'snapshot.updated', payload: merged }),
+      expect.objectContaining({ seq: 4, source: 'provider', type: 'agent.statusChanged' }),
+    ]);
+  });
+
+  it('replays a merged snapshot and the event behind it that arrived during one daemon read', async () => {
+    const { controller, provider, state, emit, window } = setup();
+    controller.createWindow();
+    await controller.initialize();
+    const merged = structuredClone(state.snapshot);
+    merged.agents[0]!.name = 'Renamed while queued';
+    let reads = 0;
+    provider.request.mockImplementation(async (method: string) => {
+      if (method !== 'snapshot/get') return state.clientState;
+      reads++;
+      if (reads === 1) {
+        // Both frames reach main while its read is in flight; the read itself only covers sequence 1.
+        emit({ seq: 3, coveredFromSeq: 2, occurredAt: '2026-10-04T00:00:00Z', type: 'snapshot.updated', payload: merged });
+        emit({ seq: 4, occurredAt: '2026-10-04T00:00:01Z', type: 'agent.statusChanged', agentId: merged.agents[0]!.id, payload: { type: 'working' } });
+        return { ...state, lastEventSeq: 1 };
+      }
+      return { ...state, lastEventSeq: 4 };
+    });
+
+    await invoke(ipcChannels.getSnapshotState);
+
+    expect(reads).toBe(1);
+    const forwarded = window.webContents.send.mock.calls.filter(([channel]) => channel === ipcChannels.event).map(([, event]) => event);
+    expect(forwarded.slice(-2)).toStrictEqual([
+      expect.objectContaining({ seq: 3, coveredFromSeq: 2, source: 'provider', type: 'snapshot.updated' }),
+      expect.objectContaining({ seq: 4, source: 'provider', type: 'agent.statusChanged' }),
+    ]);
+  });
+
+  it('rebases on a complete snapshot that follows lost events instead of reading the daemon again', async () => {
+    const { controller, provider, state, emit, window } = setup();
+    controller.createWindow();
+    await controller.initialize();
+    const daemonReads = () => provider.request.mock.calls.filter(([method]) => method === 'snapshot/get').length;
+    const readsAfterStartup = daemonReads();
+    const recovered = structuredClone(state.snapshot);
+    recovered.agents[0]!.name = 'Renamed during the gap';
+
+    emit({ seq: 5, occurredAt: '2026-10-04T00:00:00Z', type: 'snapshot.updated', payload: recovered, clientState: state.clientState });
+    emit({ seq: 6, occurredAt: '2026-10-04T00:00:01Z', type: 'agent.statusChanged', agentId: recovered.agents[0]!.id, payload: { type: 'working' } });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(daemonReads()).toBe(readsAfterStartup);
+    const forwarded = window.webContents.send.mock.calls.filter(([channel]) => channel === ipcChannels.event).map(([, event]) => event);
+    // The window is told which backend sequence the repaired state is current to, then keeps following the stream.
+    expect(forwarded.slice(-2)).toStrictEqual([
+      expect.objectContaining({ source: 'client', type: 'snapshot.updated', payload: recovered, lastBackendEventSeq: 5 }),
+      expect.objectContaining({ seq: 6, source: 'provider', type: 'agent.statusChanged' }),
+    ]);
+  });
+
+  it('reads the daemon when the snapshot that follows lost events does not say what the client state is', async () => {
+    const { controller, provider, state, emit } = setup();
+    controller.createWindow();
+    await controller.initialize();
+    const daemonReads = () => provider.request.mock.calls.filter(([method]) => method === 'snapshot/get').length;
+    const readsAfterStartup = daemonReads();
+    state.lastEventSeq = 5;
+
+    emit({ seq: 5, occurredAt: '2026-10-04T00:00:00Z', type: 'snapshot.updated', payload: structuredClone(state.snapshot) });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(daemonReads()).toBe(readsAfterStartup + 1);
+  });
+
+  it('keeps the client state of a newer event when an older refresh answers late', async () => {
+    const { controller, provider, state, emit } = setup();
+    await controller.initialize();
+    let answerRefresh!: (clientState: ClientState) => void;
+    provider.request.mockImplementation(method => method === 'agent/codeReview/manual'
+      ? Promise.resolve(state.snapshot)
+      : new Promise(resolve => { answerRefresh = resolve as typeof answerRefresh; }));
+    await import('../../preload/index');
+    const api = native.exposed.get('app') as import('@workspace/core/contracts').AppApi;
+    await api.switchCodeReviewToManual('reviewer', 'review');
+
+    // An agent starts working after the refresh was sent: the event is newer than whatever the refresh will answer.
+    emit({ seq: 1, occurredAt: '2026-11-02T00:00:00Z', type: 'snapshot.updated', payload: state.snapshot,
+      clientState: { sourceFolderPath: '/projects', shouldPreventDisplaySleep: true } });
+    expect(powerSaveBlocker.start).toHaveBeenCalledExactlyOnceWith('prevent-app-suspension');
+    answerRefresh({ sourceFolderPath: '/projects', shouldPreventDisplaySleep: false });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(powerSaveBlocker.stop).not.toHaveBeenCalled();
   });
 
   it('returns native chooser cancellation and uses the client source folder as its default', async () => {

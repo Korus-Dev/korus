@@ -18,6 +18,7 @@ import { selectAgent as selectAgentInSnapshot } from '@workspace/core/agent-mana
 import { selectTeam as selectTeamInSnapshot } from '@workspace/core/team-manager';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { applyMainEventToSnapshot } from '@workspace/core/snapshot';
+import { continuesEventSequence } from '@workspace/core/event-sequence';
 import { guestConversationCapabilities } from '@workspace/core/guest-conversation';
 import { defaultHarnessProvider, defaultProviderCapabilities } from '@workspace/core/provider-capabilities';
 import { defaultProviderCommands } from '@workspace/core/provider-commands';
@@ -544,19 +545,12 @@ export function useAppState() {
     return rendererSynchronization;
   }
   // Every repair re-reads the app snapshot and re-marks every cached pane. Pending
-  // hydrations coalesce per agent, so a storm fans out once per pane, while a pane
+  // hydrations coalesce per agent, so a storm fans out once per pane on screen, while a pane
   // whose earlier recovery completed gets one catch-up load: its owner may have
   // restarted since. Callers never wait for provider loads.
   synchronizeRendererSnapshotRequest = async () => {
     await synchronizeRendererSnapshot(true);
-    // The first provider reset can itself be dropped under transport pressure;
-    // an opened conversation without any cached frame still needs a replay.
-    const activeAgentId = snapshot.value.activeAgentId;
-    if (activeAgentId && agentNeedsHistory(activeAgentId)) void recoverConversation(activeAgentId);
-    // App snapshots cannot repair provider events skipped by the global
-    // sequence fence. Refresh every cached pane from its conversation owner,
-    // including split panes and inactive agents, before trusting those frames.
-    sessionConversations.recoverAll();
+    recoverConversationsAfterRepair();
   };
 
   async function performRendererSynchronization(preserveActiveSelection: boolean): Promise<void> {
@@ -591,7 +585,7 @@ export function useAppState() {
           if (event.type === 'agentCreation.progress') syncAgentCreationProgressFromMainEvent(event);
           continue;
         }
-        if (event.seq !== lastBackendEventSeq + 1) {
+        if (!continuesEventSequence(lastBackendEventSeq, event)) {
           gap = true;
           break;
         }
@@ -2038,7 +2032,7 @@ function subscribeToMainEvents(): void {
         if (isSnapshotEventOwnedBy(event, 'renderer') && isConversationFrame(event)) handleRendererOwnedMainEvent(event);
         return;
       }
-      if (event.seq !== lastBackendEventSeq + 1) {
+      if (!continuesEventSequence(lastBackendEventSeq, event)) {
         bufferedMainEvents = [event];
         void synchronizeRendererSnapshotRequest?.().catch((error) => {
           connectionState.value = { status: 'error', detail: error instanceof Error ? error.message : String(error) };
@@ -2052,9 +2046,13 @@ function subscribeToMainEvents(): void {
 }
 
 function handleMainEvent(event: MainToRendererEvent, adoptSnapshot = true): void {
-  if (event.type === 'snapshot.updated' && event.source === 'client') {
-    // Electron repaired a transport gap upstream. Its product snapshot does
-    // not include conversations, and no later event may arrive on a silent turn.
+  // Electron repaired a transport gap upstream. When it names the backend sequence its snapshot is current to,
+  // this window continues from that state instead of reading it again.
+  const repairedSeq = event.type === 'snapshot.updated' && event.source === 'client' ? event.lastBackendEventSeq : undefined;
+  // A repair older than the state already held here changes nothing.
+  if (repairedSeq !== undefined && repairedSeq < lastBackendEventSeq) return;
+  if (event.type === 'snapshot.updated' && event.source === 'client' && repairedSeq === undefined) {
+    // The product snapshot does not include conversations, and no later event may arrive on a silent turn.
     void synchronizeRendererSnapshotRequest?.().catch((error) => {
       connectionState.value = { status: 'error', detail: error instanceof Error ? error.message : String(error) };
     });
@@ -2067,12 +2065,29 @@ function handleMainEvent(event: MainToRendererEvent, adoptSnapshot = true): void
     }
   }
   if (adoptSnapshot) adoptSnapshotFromMainEvent(event);
+  if (repairedSeq !== undefined) {
+    lastBackendEventSeq = repairedSeq;
+    recoverConversationsAfterRepair();
+  }
   syncUnreadStateFromMainEvent(event);
   if (isSnapshotEventOwnedBy(event, 'renderer')) {
     handleRendererOwnedMainEvent(event);
     return;
   }
   handleSnapshotOwnedRendererEffect(event);
+}
+
+/**
+ * App snapshots cannot repair conversation frames skipped by the global sequence fence. Conversations on screen
+ * are refreshed from their owner now; the others are marked behind and catch up when shown.
+ */
+function recoverConversationsAfterRepair(): void {
+  const activeAgentId = snapshot.value.activeAgentId;
+  const onScreen = new Set([...visibleAgentIds, ...(activeAgentId ? [activeAgentId] : [])]);
+  // The first provider reset can itself be dropped under transport pressure;
+  // a conversation on screen without any cached frame still needs a replay.
+  for (const agentId of onScreen) if (agentNeedsHistory(agentId)) void recoverConversation(agentId);
+  sessionConversations.markBehind(onScreen);
 }
 
 function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {

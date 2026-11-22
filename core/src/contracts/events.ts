@@ -12,6 +12,16 @@ import type { MissionImplementationStartProgress } from '../mission-execution';
 
 type EventEnvelope = {
   seq: number;
+  /**
+   * Set on a snapshot that a transport delivered in place of the snapshots queued just before it: the first sequence
+   * it stands in for. Receivers treat the sequences from this one up to `seq` as delivered.
+   */
+  coveredFromSeq?: number;
+  /**
+   * Set on a snapshot the desktop publishes after repairing its own event stream: the backend sequence that snapshot
+   * is current to, so a window continues from it without reading the state again.
+   */
+  lastBackendEventSeq?: number;
   source?: 'provider' | 'client';
   agentId?: string;
   provider?: HarnessProvider;

@@ -1096,6 +1096,8 @@ describe('useAppState', () => {
     stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
     const state = useAppState();
     await state.loadSnapshot();
+    // Both conversations are on screen, as panes of a split.
+    state.setVisibleAgentIds([codex.id, claude.id]);
     await vi.waitFor(() => expect(load).toHaveBeenCalled());
     await nextTick();
     receive(sessionSnapshotEvent(codex.id, sessionState(), { seq: 1, conversation: 'thread-1', revision: 40 }));
@@ -1181,6 +1183,8 @@ describe('useAppState', () => {
       stubElectronTestWindow({ app: { getSnapshotState, loadConversationHistory: load, onEvent: listener => { receive = listener; return () => {}; } } });
       const state = useAppState();
       await state.loadSnapshot();
+      // Both conversations are on screen, as panes of a split.
+      state.setVisibleAgentIds([codex.id, claude.id]);
       await vi.advanceTimersByTimeAsync(0);
       receive(sessionSnapshotEvent(codex.id, sessionState(), { seq: 1, conversation: 'thread-1', revision: 40 }));
       receive(sessionSnapshotEvent(claude.id, sessionState(), { seq: 2, provider: 'claude', conversation: 'claude-session-1', revision: 40 }));

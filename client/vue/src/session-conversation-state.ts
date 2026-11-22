@@ -64,7 +64,21 @@ export function createSessionConversationState(recover: (agentId: string) => Pro
     },
     discard(agentId: string) { const next = { ...frames.value }; delete next[agentId]; frames.value = next; },
     reset() { frames.value = {}; pending.clear(); lastAttached.clear(); },
-    recoverAll() { for (const id of Object.keys(frames.value)) invalidate(id); },
+    /**
+     * Every cached conversation may have missed frames. The ones on screen reload now; the others are only marked
+     * behind, and reload when they are shown or when their next frame arrives.
+     */
+    markBehind(onScreen: ReadonlySet<string>) {
+      const next = { ...frames.value };
+      let changed = false;
+      for (const [id, frame] of Object.entries(next)) {
+        if (onScreen.has(id) || frame.awaitingRecovery) continue;
+        next[id] = { ...frame, awaitingRecovery: true };
+        changed = true;
+      }
+      if (changed) frames.value = next;
+      for (const id of Object.keys(next)) if (onScreen.has(id)) invalidate(id);
+    },
     reconcile(agents: Agent[]) {
       const agentsById = new Map(agents.map(agent => [agent.id, agent]));
       for (const id of lastAttached.keys()) if (!agentsById.has(id)) lastAttached.delete(id);

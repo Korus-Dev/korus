@@ -173,6 +173,7 @@ function expectEventContext(event: EventRecord): void {
 export function decodeAppBackendEvent(value: unknown): AppBackendEvent {
   expectRecord(value, '$');
   expectNumber(value.seq, '$.seq');
+  expectOptional(value, 'coveredFromSeq', '$', expectNumber);
   expectString(value.occurredAt, '$.occurredAt');
   if (typeof value.type !== 'string' || !(value.type in payloadValidators)) {
     failEventValidation('$.type', 'expected a supported event type');

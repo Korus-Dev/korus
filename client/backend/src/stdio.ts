@@ -192,6 +192,8 @@ export class StdioRpcPeer {
   }
 
   private write(message: AppRpcMessage, responseMethod?: string): void {
+    const replacesQueuedSnapshot = this.outputBackpressured ? this.replaceQueuedSnapshot(message) : null;
+    if (replacesQueuedSnapshot) message = replacesQueuedSnapshot;
     const metadata = conversationLoadFrameMetadata(message, responseMethod);
     const started = performance.now();
     const frame = `${JSON.stringify(message)}\n`;
@@ -202,7 +204,7 @@ export class StdioRpcPeer {
       this.reportOutputOverflow(message, bytes, responseMethod);
     }
     if (this.outputBackpressured) {
-      const queued = this.enqueueOutput(message, frame, responseMethod, metadata);
+      const queued = this.enqueueOutput(message, frame, responseMethod, metadata, replacesQueuedSnapshot !== null);
       if (metadata && process.env.CODEX_APP_SDK_TRACE_CONVERSATION_LOAD === '1') console.warn('[conversation-load] ' + JSON.stringify({ ...metadata, layer: 'daemon-transport', stage: queued ? 'output.queued' : 'output.dropped',
         at: performance.timeOrigin + serializedAt, bytes, serializeMs: serializedAt - started, queuedBytes: this.outputQueueBytes }));
       return;
@@ -245,25 +247,32 @@ export class StdioRpcPeer {
     this.outputIdleWaiters.clear();
   }
 
-  private enqueueOutput(message: AppRpcMessage, frame: string, responseMethod?: string, metadata?: Record<string, unknown>): boolean {
-    const bytes = Buffer.byteLength(frame);
-    if (isAppRpcNotification(message) && message.method === 'backend/event/notify') {
-      const existingSnapshotIndex = this.outputQueue.findIndex((queued) => (
-        isAppRpcNotification(queued.message) &&
-        queued.message.method === 'backend/event/notify' &&
-        isSnapshotUpdatedNotification(queued.message) &&
-        isSnapshotUpdatedNotification(message)
-      ));
-      if (existingSnapshotIndex >= 0) {
-        const previous = this.outputQueue[existingSnapshotIndex]!;
-        this.outputQueue[existingSnapshotIndex] = { frame, bytes, message };
-        this.outputQueueBytes += bytes - previous.bytes;
-        return true;
-      }
-    }
+  /**
+   * A snapshot queued at the tail is superseded by a newer one: dropping it keeps every other event in order and the
+   * receiver still gets the latest state, however little room is left.
+   *
+   * The survivor names the first sequence it stands in for only when it directly follows the one it replaces, so a
+   * receiver that checks sequence continuity does not read those snapshots as lost. Sitting next to each other in
+   * the queue is not enough: a notification emitted between the two may have been dropped for lack of room, and
+   * covering its sequence would hide that loss. The survivor then carries no claim and the receiver sees the gap.
+   */
+  private replaceQueuedSnapshot(message: AppRpcMessage): AppRpcMessage | null {
+    const last = this.outputQueue.at(-1);
+    if (!last || !isSnapshotUpdatedNotification(message) || !isSnapshotUpdatedNotification(last.message)) return null;
+    this.outputQueue.pop();
+    this.outputQueueBytes -= last.bytes;
+    const superseded = (last.message as { params: { seq?: unknown; coveredFromSeq?: unknown } }).params;
+    const notification = message as AppRpcMessage & { params: Record<string, unknown> };
+    if (typeof superseded.seq !== 'number' || notification.params.seq !== superseded.seq + 1) return message;
+    const coveredFromSeq = typeof superseded.coveredFromSeq === 'number' ? superseded.coveredFromSeq : superseded.seq;
+    return { ...notification, params: { ...notification.params, coveredFromSeq } };
+  }
 
+  private enqueueOutput(message: AppRpcMessage, frame: string, responseMethod?: string, metadata?: Record<string, unknown>, replacesQueuedFrame = false): boolean {
+    const bytes = Buffer.byteLength(frame);
     const maxBufferedBytes = this.options.maxBufferedOutputBytes ?? DEFAULT_MAX_BUFFERED_OUTPUT_BYTES;
-    if (this.outputQueueBytes + bytes > maxBufferedBytes) {
+    // A frame that took the place of a queued one is kept: dropping it would lose both.
+    if (!replacesQueuedFrame && this.outputQueueBytes + bytes > maxBufferedBytes) {
       if (bytes <= maxBufferedBytes) {
         this.reportOutputOverflow(message, bytes, responseMethod);
       }
