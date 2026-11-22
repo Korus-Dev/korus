@@ -12,6 +12,8 @@ type TaskPorts = {
   tasks: DelegatedTask[];
   save(tasks: DelegatedTask[]): Promise<void>;
   agent(id: string): Agent | undefined;
+  /** Every agent the host knows, for a pass over all assignments; without it each worker is looked up on its own. */
+  agents?(): Agent[];
   resolveAgentId?(id: string): string;
   send(agent: Agent, prompt: string, goal?: boolean, planMode?: boolean): Promise<TaskAcceptance>;
   interrupt(agent: Agent, expectedTurnId: string): Promise<unknown>;
@@ -250,7 +252,14 @@ export class DurableTaskService {
   handleEvent(event: BackendPublishedEvent): void {
     if (event.type === 'snapshot.updated') {
       void this.change(tasks => {
-        for (const task of tasks) if (!terminal(task) && task.state !== 'preparing' && !this.agent(task.workerAgentId)) {
+        // Read on the first assignment that needs it and shared by the rest: most snapshots concern none.
+        let roster: Set<string> | undefined;
+        const present = (id: string) => {
+          if (!this.ports.agents) return Boolean(this.agent(id));
+          roster ??= new Set(this.ports.agents().map(agent => agent.id));
+          return roster.has(this.identity(id));
+        };
+        for (const task of tasks) if (!terminal(task) && task.state !== 'preparing' && !present(task.workerAgentId)) {
           task.state = 'interrupted';
           task.detail = 'Worker was removed. Assignment and any provisional result are retained.';
         }

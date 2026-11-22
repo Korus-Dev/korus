@@ -10,7 +10,10 @@ import { ProviderDriverRpc } from '../driver-rpc';
 import type { AgentGitService } from '../git/agent-git-service';
 import { createMission, isMission } from '@workspace/core/missions';
 import {
+  createRemoteAgent,
+  createRemoteTeamSnapshot,
   createTestSnapshot,
+  readyRemoteConnection,
 } from './server-test-fixtures';
 
 describe('AppBackendServer', () => {
@@ -700,6 +703,28 @@ describe('AppBackendServer', () => {
         shouldPreventDisplaySleepForRemoteAccess: false,
       },
     });
+  });
+
+  it('counts work running on a linked host in the client state, reading a host it has not heard from yet', async () => {
+    const snapshot = createTestSnapshot();
+    snapshot.general.preventSleepWhenAgentsRun = true;
+    const connection = readyRemoteConnection();
+    snapshot.remoteConnections.connections = [connection];
+    snapshot.teams.push({ id: 'pointer', name: 'Remote', agentIds: [], remoteLinks: [{ connectionId: connection.id, remoteTeamId: 'team-remote' }] });
+    const remoteSnapshot = createRemoteTeamSnapshot([{ ...createRemoteAgent(), status: { type: 'working' } }]);
+    const request = vi.fn(async (_connection: unknown, method: string) => {
+      if (method === backendMethods.snapshotGet) return { snapshot: remoteSnapshot, lastEventSeq: 0, clientState: { sourceFolderPath: '', shouldPreventDisplaySleep: false } };
+      throw new Error(`Unexpected remote request: ${method}`);
+    });
+    const server = new AppBackendServer({ version: 'test-version', snapshot, remoteClients: { request, close: vi.fn() } as never });
+    const clientState = () => server.handleMessage({ jsonrpc: '2.0', id: 'client-state', method: backendMethods.clientStateGet });
+    try {
+      await expect(clientState()).resolves.toMatchObject({ result: { shouldPreventDisplaySleep: true } });
+      expect(request).toHaveBeenCalledWith(connection, backendMethods.snapshotGet, expect.anything(), expect.anything());
+
+      remoteSnapshot.agents[0]!.status = { type: 'idle' };
+      await expect(clientState()).resolves.toMatchObject({ result: { shouldPreventDisplaySleep: false } });
+    } finally { await server.close(); }
   });
 
   it('keeps the display awake for remote access only while companion access is on', async () => {

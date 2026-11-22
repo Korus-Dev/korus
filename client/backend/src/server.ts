@@ -247,7 +247,7 @@ export class AppBackendServer {
       const parent = agent.delegatedByAgentId && this.resolveTaskAgentId(agent.delegatedByAgentId);
       return parent && parent !== agent.delegatedByAgentId ? { ...agent, delegatedByAgentId: parent } : agent;
     });
-    return [...local, ...this.remoteTeams.clientSnapshotFromKnownRemotes().agents.filter(agent => agent.remoteConnectionId)];
+    return [...local, ...this.remoteTeams.projectedRoster().agents.filter(agent => agent.remoteConnectionId)];
   }
 
   resolveTaskAgentId(id: string): string { return resolveHandoffAgentId(this.snapshot.teams, id); }
@@ -1655,7 +1655,7 @@ export class AppBackendServer {
     if (startsWork) {
       const effectiveParams = isRecord(request.params) ? request.params : {};
       const input = isRecord(effectiveParams.input) ? effectiveParams.input : {};
-      const agent = (before ?? this.remoteTeams.clientSnapshotFromKnownRemotes()).agents.find(candidate => candidate.id === (params?.agentId ?? input.id));
+      const agent = (before ?? this.remoteTeams.projectedRoster()).agents.find(candidate => candidate.id === (params?.agentId ?? input.id));
       const remote = params?.remoteConnectionId || input.remoteConnectionId || agent?.remoteConnectionId;
       const requestedSelection = isRecord(input.selection) ? input.selection : {};
       if (!remote && (message.method !== backendMethods.agentUpdate || (requestedSelection.provider !== undefined && requestedSelection.provider !== agent?.provider))) {
@@ -1834,7 +1834,7 @@ export class AppBackendServer {
           clientState: this.clientStateFromSnapshot(snapshot),
         });
       case backendMethods.clientStateGet:
-        return createAppRpcResult(message.id, this.clientStateFromSnapshot(await this.remoteTeams.clientSnapshot()));
+        return createAppRpcResult(message.id, this.clientStateFromRoster((await this.remoteTeams.clientRoster()).agents));
       case backendMethods.debugAgentMessageSend: {
         const agentId = requireAgentId(message.params);
         const recipient = this.snapshot.agents.find((candidate) => candidate.id === agentId);
@@ -4299,7 +4299,7 @@ export class AppBackendServer {
     // Catalog broadcasts belong to one host. Scope them to its projected agents
     // before crossing the client boundary, which otherwise treats them as local.
     if (!event.agentId && (event.type === 'models.changed' || event.type === 'skills.changed')) {
-      const projected = this.remoteTeams.clientSnapshotFromKnownRemotes();
+      const projected = this.remoteTeams.projectedRoster();
       for (const agent of projected.agents) {
         if (agent.remoteConnectionId === connectionId && agent.provider === event.provider) {
           if (event.type === 'skills.changed' && event.payload.cwd && event.payload.cwd !== agent.folder) continue;
@@ -4704,12 +4704,19 @@ export class AppBackendServer {
     return clientStateFromSnapshot(snapshot, this.companionAccessEnabled);
   }
 
+  /**
+   * The client state depends on the settings and on whether any agent, local or on a host, is at work: the roster
+   * answers it without a client snapshot.
+   */
+  private clientStateFromRoster(agents: Agent[]): ClientState {
+    return this.clientStateFromSnapshot({ ...this.snapshot, agents });
+  }
+
   private emitRemoteBackendEvent(event: BackendPublishedEvent): void {
     this.onBackendEventApplied?.(event);
-    const snapshot = this.remoteTeams.clientSnapshotFromKnownRemotes();
     this.onEvent?.({
       ...event,
-      clientState: this.clientStateFromSnapshot(snapshot),
+      clientState: this.clientStateFromRoster(this.remoteTeams.projectedRoster().agents),
     });
   }
 

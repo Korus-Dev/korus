@@ -9,6 +9,30 @@ import {
 } from './server-test-fixtures';
 
 describe('RemoteTeamService', () => {
+  it('hands out a snapshot that stays as it was read, whatever the daemon or the reader changes afterwards', () => {
+    const snapshot = createTestSnapshot();
+    snapshot.agents = [{ ...createRemoteAgent(), id: 'agent-local', teamId: snapshot.teams[0]!.id }];
+    snapshot.teams[0]!.agentIds = ['agent-local'];
+    snapshot.missions = [{ id: 'mission-1', teamId: snapshot.teams[0]!.id, outcome: 'Ship it', stageAgentIds: { requirements: 'agent-local' } } as never];
+    snapshot.turnGitDiffs = { 'turn-1': { agentId: 'agent-local', turnId: 'turn-1', addedLines: 1, removedLines: 0, diff: 'text', updatedAt: '2026-06-14T10:00:00.000Z' } };
+    const service = new RemoteTeamService({ clients: {} as never, getSnapshot: () => snapshot, onForwardedEvent: vi.fn(), onProjectedSnapshotChanged: vi.fn() });
+    const asRead = structuredClone(snapshot);
+
+    const held = service.clientSnapshotFromKnownRemotes();
+    // The daemon edits a mission and an agent in place, as a provider reset does.
+    snapshot.missions[0]!.stageAgentIds = {};
+    snapshot.agents[0]!.name = 'Renamed by the daemon';
+    expect(held).toEqual(asRead);
+
+    // A reader edits what it was handed.
+    held.missions![0]!.outcome = 'Edited by a reader';
+    held.teams[0]!.agentIds.push('agent-added-by-a-reader');
+    delete held.turnGitDiffs['turn-1'];
+    expect(snapshot.missions[0]!.outcome).toBe('Ship it');
+    expect(snapshot.teams[0]!.agentIds).toStrictEqual(['agent-local']);
+    expect(Object.keys(snapshot.turnGitDiffs)).toStrictEqual(['turn-1']);
+  });
+
   it('includes remote engine availability in the first projected snapshot', async () => {
     const snapshot = createTestSnapshot();
     snapshot.remoteConnections.connections = [readyRemoteConnection()];
@@ -149,6 +173,8 @@ describe('RemoteTeamService', () => {
     service.rememberSnapshot('connection-devbox', createRemoteTeamSnapshot([remoteAgent]));
 
     const projected = service.clientSnapshotFromKnownRemotes();
+    // A lookup reads the same workspaces and agents without projecting anything else.
+    expect(service.projectedRoster()).toEqual({ teams: projected.teams, agents: projected.agents, activeTeamId: projected.activeTeamId, activeAgentId: projected.activeAgentId });
 
     expect(projected.teams[0]).toMatchObject({ name: 'Mixed', agentIds: [localAgent.id, remoteAgent.id] });
     expect(projected.agents.find((agent) => agent.id === remoteAgent.id)).toMatchObject({ teamId: 'team-test', remoteConnectionId: 'connection-devbox' });
@@ -438,6 +464,8 @@ describe('RemoteTeamService', () => {
     service.rememberSnapshot('connection-devbox', remoteSnapshot);
 
     const projected = service.clientSnapshotFromKnownRemotes();
+    // A lookup reads the same workspaces and agents without projecting anything else.
+    expect(service.projectedRoster()).toEqual({ teams: projected.teams, agents: projected.agents, activeTeamId: projected.activeTeamId, activeAgentId: projected.activeAgentId });
 
     expect(projected).not.toHaveProperty('messages');
     expect(projected.agents.map((agent) => agent.id)).toStrictEqual([unrelatedAgent.id, remoteAgent.id]);

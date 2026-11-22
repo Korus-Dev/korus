@@ -43,7 +43,7 @@ export class MissionService {
       mission.revision++;
       mission.updatedAt = new Date().toISOString();
       return result;
-    });
+    }, id);
   }
 
   remove(input: DeleteMissionInput, cleanup: (mission: Mission, agents: Agent[]) => Promise<void>): Promise<void> {
@@ -60,14 +60,19 @@ export class MissionService {
     }, true);
   }
 
-  private transaction<T>(mutate: (candidate: AppSnapshot) => T | Promise<T>, cloneSnapshot = false): Promise<T> {
+  /**
+   * Runs `mutate` on a private copy and publishes it only once it is stored. The copy is the whole snapshot, every
+   * mission, or the one mission named by `scope`: a change to one mission does not pay for copying the others.
+   */
+  private transaction<T>(mutate: (candidate: AppSnapshot) => T | Promise<T>, scope: boolean | string = false): Promise<T> {
     const operation = this.pending.then(async () => {
-      const candidate = cloneSnapshot
+      const missions = this.snapshot.missions ?? [];
+      const candidate = scope === true
         ? structuredClone(this.snapshot)
-        : { ...this.snapshot, missions: structuredClone(this.snapshot.missions ?? []) };
+        : { ...this.snapshot, missions: typeof scope === 'string' ? missions.map(mission => mission.id === scope ? structuredClone(mission) : mission) : structuredClone(missions) };
       const result = await mutate(candidate);
       await this.persist(candidate);
-      if (cloneSnapshot) Object.assign(this.snapshot, candidate);
+      if (scope === true) Object.assign(this.snapshot, candidate);
       else this.snapshot.missions = candidate.missions;
       return result;
     });

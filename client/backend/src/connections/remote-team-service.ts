@@ -242,6 +242,18 @@ export class RemoteTeamService {
   }
 
   async clientSnapshot(): Promise<AppSnapshot> {
+    await this.prepareLinkedHosts();
+    return this.clientSnapshotFromKnownRemotes();
+  }
+
+  /** The roster a client snapshot would show, after the same preparation of the linked hosts. */
+  async clientRoster(): Promise<ProjectedRoster> {
+    await this.prepareLinkedHosts();
+    return this.projectedRoster();
+  }
+
+  /** Reads every linked host not heard from yet, and refreshes in the background the ones known only from the cache. */
+  private async prepareLinkedHosts(): Promise<void> {
     for (const pointer of this.pointers()) {
       if (this.stale.has(pointer.connectionId)) {
         this.refreshInBackground(pointer.connectionId);
@@ -254,7 +266,6 @@ export class RemoteTeamService {
         // Unknown remotes are projected as empty without losing their local link.
       }
     }
-    return this.clientSnapshotFromKnownRemotes();
   }
 
   /** Serves the cached agents right away and learns in the background whether the host answers. */
@@ -288,6 +299,25 @@ export class RemoteTeamService {
       missions: snapshot.missions?.filter(mission => teamIds.has(mission.teamId)),
       providerConnections: snapshot.providerConnections,
     };
+  }
+
+  /**
+   * The workspaces and agents as clients see them, hosts included, and nothing else: what a lookup needs. Unlike a
+   * client snapshot it reads neither the coordination state nor the Missions or the changes of turns, so its cost
+   * follows the size of the roster and not the history a workspace has accumulated.
+   */
+  projectedRoster(): ProjectedRoster {
+    const { teams, agents, activeTeamId, activeAgentId } = this.options.getSnapshot();
+    const roster = JSON.parse(JSON.stringify({ teams, agents, activeTeamId, activeAgentId })) as ProjectedRoster;
+    for (const team of roster.teams) {
+      for (const link of this.linksForTeam(team)) {
+        const remoteSnapshot = this.snapshots.get(link.connectionId);
+        if (remoteSnapshot) projectRemoteAgents(roster, team, remoteSnapshot, link);
+      }
+    }
+    for (const agent of roster.agents) if (agent.delegatedByAgentId) agent.delegatedByAgentId = resolveHandoffAgentId(roster.teams, agent.delegatedByAgentId);
+    applyRemoteActiveAgent(roster);
+    return roster;
   }
 
   clientSnapshotFromKnownRemotes(): AppSnapshot {
@@ -360,9 +390,12 @@ function cloneAppSnapshot(snapshot: AppSnapshot): AppSnapshot {
   return JSON.parse(JSON.stringify(snapshot)) as AppSnapshot;
 }
 
-function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot: AppSnapshot, link: RemoteTeamLink): void {
+type ProjectedRoster = Pick<AppSnapshot, 'teams' | 'agents' | 'activeTeamId' | 'activeAgentId'>;
+
+/** Adds a host's agents to the workspace that links its team. Answers their ids, or null when the host no longer has that team. */
+function projectRemoteAgents(target: Pick<AppSnapshot, 'agents'>, localTeam: Team, remoteSnapshot: AppSnapshot, link: RemoteTeamLink): Set<string> | null {
   const remoteTeam = remoteSnapshot.teams.find((team) => team.id === link.remoteTeamId);
-  if (!remoteTeam) return;
+  if (!remoteTeam) return null;
   const remoteAgentIds = new Set(remoteTeam.agentIds);
   const remoteAgents = remoteSnapshot.agents
     .filter((agent) => remoteAgentIds.has(agent.id))
@@ -372,6 +405,12 @@ function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot:
 
   const projectedAgentIds = new Set(remoteAgents.map((agent) => agent.id));
   target.agents = [...target.agents.filter((agent) => !projectedAgentIds.has(agent.id)), ...remoteAgents];
+  return projectedAgentIds;
+}
+
+function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot: AppSnapshot, link: RemoteTeamLink): void {
+  const projectedAgentIds = projectRemoteAgents(target, localTeam, remoteSnapshot, link);
+  if (!projectedAgentIds) return;
   for (const mission of remoteSnapshot.missions ?? []) {
     if (mission.teamId !== link.remoteTeamId || target.missions?.some(candidate => candidate.id === mission.id)) continue;
     (target.missions ??= []).push({
@@ -409,7 +448,7 @@ function projectRemoteTeam(target: AppSnapshot, localTeam: Team, remoteSnapshot:
   };
 }
 
-function applyRemoteActiveAgent(snapshot: AppSnapshot): void {
+function applyRemoteActiveAgent(snapshot: ProjectedRoster): void {
   if (snapshot.activeAgentId && snapshot.agents.some((agent) => agent.id === snapshot.activeAgentId)) return;
   const activeTeam = snapshot.teams.find((team) => team.id === snapshot.activeTeamId) ?? null;
   if (!activeTeam?.remoteLinks?.length) return;

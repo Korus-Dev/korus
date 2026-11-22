@@ -24,7 +24,8 @@ function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Pr
   });
   const interrupt = vi.fn(async () => undefined);
   const onError = vi.fn();
-  const service = new DurableTaskService({ tasks: saved, save, send, interrupt, onError, readHistory, resolveAgentId, agent: id => agents.find(agent => agent.id === id) });
+  const roster = vi.fn(() => agents);
+  const service = new DurableTaskService({ tasks: saved, save, send, interrupt, onError, readHistory, resolveAgentId, agent: id => agents.find(agent => agent.id === id), agents: roster });
   services.push(service);
   function event(agentId: string, type: string, turnId?: string, payload: unknown = {}) {
     service.handleEvent({ agentId, type, turnId, payload } as BackendPublishedEvent);
@@ -40,10 +41,34 @@ function fixture(saved: DelegatedTask[] = [], readHistory?: (agent: Agent) => Pr
     agents.find(agent => agent.id === task.workerAgentId)!.status = { type: 'idle' };
     event(task.workerAgentId, 'turn.completed', turn, { status: outcome });
   };
-  return { parent, agents, service, create, provision, save, send, interrupt, event, finish, onError, disk: () => disk };
+  return { parent, agents, roster, service, create, provision, save, send, interrupt, event, finish, onError, disk: () => disk };
 }
 
 describe('durable assignment lifecycle', () => {
+  it('interrupts the assignments whose worker left the roster, reading the roster once for a snapshot', async () => {
+    const f = fixture();
+    const kept = await f.create('request-kept');
+    const orphaned = await f.create('request-orphaned');
+    f.agents.splice(f.agents.findIndex(agent => agent.id === orphaned.workerAgentId), 1);
+    f.roster.mockClear();
+
+    f.service.handleEvent({ type: 'snapshot.updated', payload: {} } as BackendPublishedEvent);
+    await f.service.flush();
+
+    expect(f.disk().map(task => [task.id, task.state])).toStrictEqual([[kept.id, 'running'], [orphaned.id, 'interrupted']]);
+    expect(f.disk()[1]!.detail).toBe('Worker was removed. Assignment and any provisional result are retained.');
+    expect(f.roster).toHaveBeenCalledOnce();
+  });
+
+  it('does not read the roster for a snapshot when no assignment could have lost its worker', async () => {
+    const f = fixture();
+
+    f.service.handleEvent({ type: 'snapshot.updated', payload: {} } as BackendPublishedEvent);
+    await f.service.flush();
+
+    expect(f.roster).not.toHaveBeenCalled();
+  });
+
   it('retains original task identity and results through authorized parent handoff lineage', async () => {
     const aliases: Record<string, string> = {};
     const f = fixture([], undefined, id => aliases[id] ?? id);

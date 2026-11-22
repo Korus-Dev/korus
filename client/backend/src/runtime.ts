@@ -172,6 +172,7 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
     resolveAgentId: id => server.resolveTaskAgentId(id),
     save: saveBackendTasks,
     agent: id => server.collaborationAgents().find(agent => agent.id === id),
+    agents: () => server.collaborationAgents(),
     send: (agent, prompt, goal, planMode) => server.sendTaskPrompt(agent, prompt, goal, planMode),
     interrupt: (agent, expectedTurnId) => server.interruptTaskWorker(agent, expectedTurnId),
     readHistory: agent => server.readTaskHistory(agent),
