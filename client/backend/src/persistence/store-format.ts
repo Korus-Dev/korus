@@ -4,7 +4,8 @@ import backendPackage from '../../package.json';
 // Schema 2: agent provider fields are stored as `provider*` instead of `backend*`.
 export const storeSchemaVersion = 2;
 // Mixed-host teams require a reader that retains remote links and collaboration authority.
-export const rosterSchemaVersion = 6;
+// Schema 7: Mission documents live in `mission-documents`, not in roster.json.
+export const rosterSchemaVersion = 7;
 const storeWrittenBy = `daemon ${backendPackage.version}`;
 
 export class StoreFormatError extends Error {

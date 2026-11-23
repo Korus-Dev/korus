@@ -9,17 +9,27 @@ import type { AppSnapshot } from '@workspace/core/contracts';
 import { projectClientSnapshot } from '@workspace/core/client-preferences';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { product } from '@workspace/core/product';
-import { persistedStateFromSnapshot, snapshotFromPersistedState } from '../state-persistence';
-import { backupFile } from './backup';
+import { dropFinishedRunProposals } from '@workspace/core/mission-execution';
+import type { Mission } from '@workspace/core/missions';
+import { persistedStateFromSnapshot, readPersistedMission, snapshotFromPersistedState } from '../state-persistence';
+import { backupContent, backupFile } from './backup';
 import { UnchangedWrites } from './unchanged-writes';
-import { isSupportedRosterAgent, joinPersistedState, preserveUnsupportedAgents, splitPersistedState, type RosterData, type StoreFiles, type VisualizationData } from './layout';
+import { isSupportedRosterAgent, joinMissionDocuments, joinPersistedState, preserveUnsupportedAgents, splitMissionDocuments, splitPersistedState, type RosterData, type StoreFiles, type StoredMission, type VisualizationData } from './layout';
 import { migrateData, renameProviderFields, rosterMigrations, storeMigrations } from './migrations';
-import { parseData, rosterSchema, settingsSchema, visualizationSchema } from './schema';
+import { missionDocumentsSchema, parseData, rosterSchema, settingsSchema, visualizationSchema } from './schema';
 import { StoreFormatError, parseStoreFile, serializeStoreFile, storeSchemaVersion, rosterSchemaVersion } from './store-format';
 
 const rosterFile = 'roster.json';
 const settingsFile = 'settings.json';
 const visualizationsDirectory = 'visualizations';
+/**
+ * Mission documents, one file per version, named by the digest of its bytes. A file is never rewritten: a save writes
+ * the new versions, then commits roster.json, which names them, and only then removes the versions it no longer
+ * names. A failed save therefore always leaves the roster and the documents it names together. The folder belongs to
+ * the daemon, unlike `missions/<id>`, where Mission agents work.
+ */
+const missionDocumentsDirectory = 'mission-documents';
+const incompleteSuffix = '-incomplete';
 const backupsDirectory = 'backups';
 const legacyFile = 'state.json';
 const desktopRosterSchemaFloor = 6; // First written by 0.57.0.
@@ -119,12 +129,15 @@ export class AppStateStore {
     return operation;
   }
 
-  /** Verified recovery copies before an explicit destructive provider reset. */
+  /**
+   * Verified recovery copies before an explicit destructive provider reset. The roster copy holds its Missions'
+   * documents inline, so it restores on its own after later saves have removed the versions it would name.
+   */
   async backupProviderSetup(snapshot: AppSnapshot): Promise<void> {
     await this.save(snapshot);
-    for (const name of [rosterFile, settingsFile]) {
-      await backupFile(this.absolute(name), this.absolute(backupsDirectory), `provider-setup-${name.slice(0, -5)}`);
-    }
+    const { roster } = this.persistedFiles(snapshot);
+    await backupContent(serializeStoreFile(this.withUnsupportedAgents(roster), rosterSchemaVersion), this.absolute(backupsDirectory), 'provider-setup-roster');
+    await backupFile(this.absolute(settingsFile), this.absolute(backupsDirectory), 'provider-setup-settings');
   }
 
   private async migrateLegacy(text: string): Promise<AppSnapshot> {
@@ -150,13 +163,18 @@ export class AppStateStore {
   /** A restored legacy file replaces the layout, so keep whatever was there. */
   private async archiveExistingLayout(): Promise<void> {
     const existing: string[] = [];
-    for (const name of [rosterFile, settingsFile, visualizationsDirectory]) {
+    for (const name of [rosterFile, settingsFile, visualizationsDirectory, missionDocumentsDirectory]) {
       if (await stat(this.absolute(name)).then(() => true, ignoreMissing(false))) existing.push(name);
     }
-    if (existing.length === 0) return;
-    const directory = this.absolute(backupsDirectory, `layout-before-migration-${new Date().toISOString().replace(/:/g, '-')}`);
+    // An archive is staged under an incomplete name and only named once it holds the whole layout. An interrupted
+    // archive is resumed in the same folder, so the roster and the documents it names are never split apart.
+    const backups = this.absolute(backupsDirectory);
+    const staged = (await readdir(backups).catch(ignoreMissing([] as string[]))).find(name => name.startsWith('layout-before-migration-') && name.endsWith(incompleteSuffix));
+    if (existing.length === 0 && !staged) return;
+    const directory = path.join(backups, staged ?? `layout-before-migration-${new Date().toISOString().replace(/:/g, '-')}${incompleteSuffix}`);
     await mkdir(directory, { recursive: true, mode: 0o700 });
     for (const name of existing) await rename(this.absolute(name), path.join(directory, name));
+    await rename(directory, directory.slice(0, -incompleteSuffix.length));
   }
 
   private async readLayout(rosterText: string, allowLegacyStartup = true): Promise<AppSnapshot> {
@@ -188,14 +206,35 @@ export class AppStateStore {
     for (const agent of unsupported) {
       this.options.log?.(`Skipping agent ${agent.id}: unsupported provider ${agent.engine.kind}; its stored data will be preserved.`);
     }
+    const written = new Map([[settingsFile, settingsText]]);
     // Establish downgrade protection on load, before any ordinary snapshot save.
     // Keep the original bytes in a verified backup before changing the envelope.
     if (rosterEnvelope.schemaVersion < rosterSchemaVersion) {
       await backupFile(this.absolute(rosterFile), this.absolute(backupsDirectory), `roster-v${rosterEnvelope.schemaVersion}`);
+      // Documents still inline move to their own files before the roster that names them is written.
+      if (files.roster.missions) {
+        const split = storeMissionDocuments(files.roster.missions);
+        // The new roster must reopen: each Mission is checked as a fresh start would, before anything is written.
+        const texts = new Map(split.files);
+        for (const stored of split.missions) await this.withDocuments(stored, texts, true);
+        for (const [relative, text] of split.files) {
+          await writeFileAtomically(this.absolute(...relative.split('/')), text);
+          written.set(relative, text);
+        }
+        files.roster = { ...files.roster, missions: split.missions };
+      }
       rosterText = serializeStoreFile(files.roster, rosterSchemaVersion);
       await writeFileAtomically(this.absolute(rosterFile), rosterText);
     }
-    const written = new Map([[rosterFile, rosterText], [settingsFile, settingsText]]);
+    if (files.roster.missions) {
+      const missions: StoredMission[] = [];
+      // A roster this layout wrote names documents for every Mission; one that names none has lost them.
+      const writtenWithDocuments = rosterEnvelope.schemaVersion >= rosterSchemaVersion;
+      for (const stored of files.roster.missions) missions.push(await this.withDocuments(stored, written, writtenWithDocuments));
+      for (const mission of missions) dropFinishedRunProposals(mission as Mission);
+      files.roster = { ...files.roster, missions };
+    }
+    written.set(rosterFile, rosterText);
     for (const { relative, text } of await this.readVisualizationFiles()) {
       try {
         const envelope = parseStoreFile(relative, text);
@@ -211,6 +250,29 @@ export class AppStateStore {
     const snapshot = snapshotFromPersistedState(joinPersistedState(files));
     snapshot.general.repositoryIcons = icons;
     return snapshot;
+  }
+
+  /**
+   * A Mission with the documents its roster entry names. Anything short of the exact file stops the load: the next
+   * save would otherwise drop what is missing, or the whole Mission.
+   */
+  private async withDocuments(stored: StoredMission, written: Map<string, string>, documentsRequired: boolean): Promise<StoredMission> {
+    const restore = `Restore roster.json and the ${missionDocumentsDirectory} folder from the ${backupsDirectory} folder.`;
+    if (stored.documents === undefined) {
+      if (documentsRequired && !stored.artifacts) throw new StoreFormatError(`Mission ${stored.id} in ${rosterFile} names no documents. ${restore}`);
+      return stored;
+    }
+    // The reference becomes a path: only a digest may.
+    if (!/^[a-f0-9]{64}$/.test(stored.documents)) throw new StoreFormatError(`Mission ${stored.id} in ${rosterFile} names invalid documents. ${restore}`);
+    const relative = missionDocumentsPath(stored.documents);
+    const text = written.get(relative) ?? await readIfExists(this.absolute(...relative.split('/')));
+    if (text === null) throw new StoreFormatError(`${relative}, the documents of Mission ${stored.id}, is missing. ${restore}`);
+    if (sha256(text) !== stored.documents) throw new StoreFormatError(`${relative}, the documents of Mission ${stored.id}, is damaged. ${restore}`);
+    const envelope = parseStoreFile(relative, text);
+    const mission = joinMissionDocuments(stored, parseData(relative, missionDocumentsSchema, envelope.data));
+    if (!mission || !readPersistedMission(mission)) throw new StoreFormatError(`${relative} does not hold valid documents for Mission ${stored.id}. ${restore}`);
+    written.set(relative, text);
+    return mission;
   }
 
   private async readVisualizationFiles(): Promise<Array<{ relative: string; text: string }>> {
@@ -229,14 +291,24 @@ export class AppStateStore {
     return found;
   }
 
-  private serialize(snapshot: AppSnapshot): Map<string, string> {
+  private persistedFiles(snapshot: AppSnapshot): StoreFiles {
     // One shared view: the desktop profile is the effective selection, order and preferences.
-    const { roster, settings, visualizations } = splitPersistedState(persistedStateFromSnapshot(projectClientSnapshot(snapshot, 'desktop')));
+    return splitPersistedState(persistedStateFromSnapshot(projectClientSnapshot(snapshot, 'desktop')));
+  }
+
+  private withUnsupportedAgents(roster: RosterData): RosterData {
+    return this.unsupportedRoster ? preserveUnsupportedAgents(roster, this.unsupportedRoster) : roster;
+  }
+
+  private serialize(snapshot: AppSnapshot): Map<string, string> {
+    const { roster, settings, visualizations } = this.persistedFiles(snapshot);
     const files = new Map<string, string>();
     for (const visualization of visualizations) files.set(visualizationPath(visualization), serializeStoreFile(visualization));
     delete (settings.settings as Partial<typeof settings.settings>).repositoryIcons;
     files.set(settingsFile, serializeStoreFile({ ...settings, ...(this.telemetrySettings !== undefined ? { telemetry: this.telemetrySettings } : {}) }));
-    files.set(rosterFile, serializeStoreFile(this.unsupportedRoster ? preserveUnsupportedAgents(roster, this.unsupportedRoster) : roster, rosterSchemaVersion));
+    const missions = roster.missions && storeMissionDocuments(roster.missions);
+    for (const [relative, text] of missions?.files ?? []) files.set(relative, text);
+    files.set(rosterFile, serializeStoreFile(this.withUnsupportedAgents(missions ? { ...roster, missions: missions.missions } : roster), rosterSchemaVersion));
     return files;
   }
 
@@ -261,13 +333,16 @@ export class AppStateStore {
     }
   }
 
-  /** Writes what changed, then removes visualization files that no longer exist. */
+  /**
+   * Writes what changed, roster.json last, then removes the visualization files and the Mission document versions
+   * the new roster no longer names. Nothing is removed unless roster.json was written.
+   */
   private async apply(desired: Map<string, string>, icons: Record<string, string>): Promise<void> {
     if (JSON.stringify(icons) !== JSON.stringify(this.writtenIcons)) {
       await this.repositories.replaceIcons(icons);
       this.writtenIcons = icons;
     }
-    for (const [relative, content] of desired) {
+    for (const [relative, content] of [...desired].sort(([left], [right]) => Number(left === rosterFile) - Number(right === rosterFile))) {
       await this.files.writeIfChanged(this.absolute(...relative.split('/')), content, writeFileAtomically);
       this.written.set(relative, content);
     }
@@ -277,6 +352,19 @@ export class AppStateStore {
       this.files.forget(this.absolute(...relative.split('/')));
       this.written.delete(relative);
       await rmdir(path.dirname(this.absolute(...relative.split('/')))).catch(() => undefined);
+    }
+    // Versions a failed save or an interrupted migration left behind are collected too. The save is committed by
+    // now: a version that cannot be removed is reported and collected by a later save, never failing this one.
+    for (const name of await readdir(this.absolute(missionDocumentsDirectory)).catch(() => [] as string[])) {
+      const relative = `${missionDocumentsDirectory}/${name}`;
+      if (desired.has(relative)) continue;
+      try {
+        await unlink(this.absolute(missionDocumentsDirectory, name)).catch(ignoreMissing(undefined));
+        this.files.forget(this.absolute(missionDocumentsDirectory, name));
+        this.written.delete(relative);
+      } catch (error) {
+        this.options.log?.(`Could not remove ${relative}; a later save will: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
@@ -292,6 +380,28 @@ function visualizationPath(data: VisualizationData): string {
   const id = data.visualization.id;
   const safeId = /^[a-zA-Z0-9._-]+$/.test(id) ? id : `${id.replace(/[^a-zA-Z0-9._-]/g, '_')}-${createHash('sha1').update(id).digest('hex').slice(0, 8)}`;
   return `${visualizationsDirectory}/${slug}-${hash}/${safeId}.json`;
+}
+
+function missionDocumentsPath(digest: string): string {
+  return `${missionDocumentsDirectory}/${digest}.json`;
+}
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+/** Each Mission's documents as the file that holds them, and the Missions as roster.json names those files. */
+function storeMissionDocuments(missions: readonly StoredMission[]): { missions: StoredMission[]; files: Array<[string, string]> } {
+  const files: Array<[string, string]> = [];
+  const stored = missions.map(mission => {
+    const split = splitMissionDocuments(mission);
+    if (!split.documents) return split.stored;
+    const text = serializeStoreFile(split.documents);
+    const digest = sha256(text);
+    files.push([missionDocumentsPath(digest), text]);
+    return { ...split.stored, documents: digest };
+  });
+  return { missions: stored, files };
 }
 
 function sameFiles(left: Map<string, string>, right: Map<string, string>): boolean {

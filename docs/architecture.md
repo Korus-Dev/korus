@@ -425,7 +425,9 @@ blank. Electron never passes its data directory.
 
 | File | Content |
 | --- | --- |
-| `roster.json` | teams, agents, automations, missions, work assignments, review ledgers |
+| `roster.json` | teams, agents, automations, Mission state, work assignments, review ledgers |
+| `mission-documents/<sha256>.json` | a Mission's documents and those of its runs, one immutable file per version |
+| `missions/<id>/` | a Mission's working folder for its agents; deleted with the Mission |
 | `settings.json` | preferences, theme, source folder, remote connections, work integrations, private telemetry choice and identity |
 | `document-workspaces.json` | per-client, per-agent open tab references and transient Markdown backing bytes |
 | `tasks.json` | durable delegated tasks (additive; absent means none) |
@@ -450,6 +452,21 @@ Rules:
 - Roster, settings, tasks, document workspaces and visualizations use `{ schemaVersion, writtenBy, data }`. A build refuses to
   read or rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
   than becoming empty (except an unreadable visualization, which is skipped).
+- A Mission's documents (its artifacts, and the proposals, ticket drafts and evidence
+  of its runs, in run order) are in `mission-documents/<sha256>.json`, named by the
+  digest of their bytes and never rewritten. A save writes new versions, commits
+  `roster.json`, which names them, and only then removes the versions it no longer
+  names, so a failed save leaves the previous roster and its documents together, and
+  deleting a Mission removes its documents with the roster that drops it. A missing
+  file, a digest mismatch or documents that do not fit the Mission stop startup rather
+  than lose the Mission. The folder belongs to the daemon: `missions/<id>` is where the
+  Mission's agents work. What a finished run (accepted, cancelled or failed) proposed is
+  not kept: it is dropped when the run finishes and never written. Roster schema 7
+  introduced the layout; loading an older roster moves its documents after a verified
+  backup of the original, and older builds then refuse the roster. Provider-setup
+  backups hold the documents inline, so they restore on their own. Snapshots cached
+  from remote hosts are not rewritten: a host on an older build can still report
+  finished-run proposals.
 - Within a supported schema version, additive fields do not block loading agents,
   settings, tasks, document workspaces or visualizations. Known field types and task
   lifecycle invariants remain validated; command inputs retain their own strict validation.

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, readdir, mkdir, writeFile, appendFile, chmod, stat, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, mkdir, writeFile, appendFile, chmod, stat, rm, truncate } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import net from 'node:net';
 import http from 'node:http';
 import { product } from '@workspace/core/product';
@@ -218,6 +219,37 @@ describe('standalone CLI', () => {
     await writeFile(path.join(f.home, 'roster.json'), JSON.stringify(roster));
     expect(await f.command(['missions', 'list', '--offline'])).toBe(0);
     expect(f.out.pop()).toBe('Missions\nNo missions found.');
+  });
+  it('reads a saved Mission\'s tickets from the documents file its roster entry names, and says when that file is missing', async () => {
+    const f = await fixture(); await f.seed();
+    const roster = JSON.parse(await readFile(path.join(f.home, 'roster.json'), 'utf8'));
+    const [{ artifacts, ...mission }] = roster.data.missions;
+    const documents = `${JSON.stringify({ schemaVersion: 2, data: { artifacts, runs: [] } }, null, 2)}\n`;
+    const digest = createHash('sha256').update(documents).digest('hex');
+    roster.schemaVersion = 7;
+    roster.data.missions = [{ ...mission, documents: digest }];
+    await writeFile(path.join(f.home, 'roster.json'), JSON.stringify(roster));
+    await mkdir(path.join(f.home, 'mission-documents'));
+    await writeFile(path.join(f.home, 'mission-documents', `${digest}.json`), documents);
+
+    expect(await f.command(['missions', 'show', 'mission-one', '--offline', '--json'])).toBe(0);
+    expect(JSON.parse(f.out.pop()!)).toMatchObject({ source: 'saved', mission: { id: 'mission-one', tickets: [{ title: 'Checkout', done: false }] } });
+
+    // Valid JSON whose bytes are no longer the ones the roster names is damaged, not news.
+    await writeFile(path.join(f.home, 'mission-documents', `${digest}.json`), documents.replace('Checkout', 'Altered'));
+    expect(await f.command(['missions', 'show', 'mission-one', '--offline', '--json'])).not.toBe(0);
+    expect(f.err.join('')).toContain('damaged');
+
+    // A file too large for a diagnostic read is refused before its content is read, let alone hashed.
+    await truncate(path.join(f.home, 'mission-documents', `${digest}.json`), 16 * 1024 * 1024 + 1);
+    expect(await f.command(['missions', 'show', 'mission-one', '--offline', '--json'])).not.toBe(0);
+    expect(f.err.join('')).toContain('too large');
+
+    await rm(path.join(f.home, 'mission-documents', `${digest}.json`));
+    // Agents do not depend on Mission documents; a Mission's tickets do, and an empty list would be a lie.
+    expect(await f.command(['agents', 'list', '--offline', '--json'])).toBe(0);
+    expect(await f.command(['missions', 'show', 'mission-one', '--offline', '--json'])).not.toBe(0);
+    expect(f.err.join('')).toContain(`${digest}.json`);
   });
   it('rejects removed agent send and stop commands without contacting the daemon', async () => {
     const f = await fixture(); const seeded = await f.seed();

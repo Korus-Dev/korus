@@ -169,7 +169,9 @@ describe('mission execution', () => {
       }));
     });
     const history = h.current().execution!.runs;
-    expect(JSON.stringify(history).length).toBeGreaterThan(16 * 1024 * 1024);
+    // What the finished runs proposed is not kept: 200 copies of the backlog and evidence would weigh over 16 MiB.
+    expect(history.filter(run => run.proposal !== undefined)).toStrictEqual([]);
+    expect(JSON.stringify(history).length).toBeLessThan(256 * 1024);
     const schedule = h.service.schedulingContext(lead.id);
     expect(schedule.tickets).toHaveLength(200);
     expect(JSON.stringify(schedule).length).toBeLessThan(256 * 1024);

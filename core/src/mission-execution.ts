@@ -39,6 +39,25 @@ export function missionCreatedWorkspaces(mission?: Mission | null): MissionWorks
   return workspaces.filter((workspace, index) => !workspace.deleted && workspaces.findIndex(candidate => candidate.path === workspace.path) === index);
 }
 
+/** A run that will never be reviewed or resumed again. */
+export function isFinishedMissionRun(run: Pick<MissionRun, 'status'>): boolean {
+  return run.status === 'accepted' || run.status === 'cancelled' || run.status === 'failed';
+}
+
+/**
+ * Drops the documents a finished run had proposed. An accepted proposal already became the Mission's documents, and
+ * nothing reads the proposal of a run that will not be reviewed again. Answers whether anything was dropped.
+ */
+export function dropFinishedRunProposals(mission: Mission): boolean {
+  let dropped = false;
+  for (const run of mission.execution?.runs ?? []) {
+    if (run.proposal === undefined || !isFinishedMissionRun(run)) continue;
+    delete run.proposal;
+    dropped = true;
+  }
+  return dropped;
+}
+
 export function pendingMissionRun(mission: Mission): MissionRun | undefined {
   return mission.execution?.runs.slice().reverse().find(run => ['preparing', 'running', 'awaitingReview'].includes(run.status));
 }

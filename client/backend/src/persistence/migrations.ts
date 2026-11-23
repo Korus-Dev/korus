@@ -13,6 +13,8 @@ export const rosterMigrations: readonly Migration[] = [
   { from: 3, to: 4, up: migrateRemoteTeamLinks },
   { from: 4, to: 5, up: (value: unknown) => renameProviderFields(value) },
   { from: 5, to: 6, up: (value: unknown) => migrateDesignWorkspaces(value) },
+  // The store moves the documents into the Mission folders when it rewrites the roster; the data itself is unchanged.
+  { from: 6, to: 7, up: (value: unknown) => value },
 ];
 
 /** Settings, tasks and visualizations share one envelope version. */

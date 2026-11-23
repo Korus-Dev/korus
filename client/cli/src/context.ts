@@ -55,10 +55,16 @@ export async function fileExists(file: string): Promise<boolean> {
     throw new CliError(`${path.basename(file)} could not be accessed.`);
   }
 }
-export async function readJson(file: string): Promise<Record<string, unknown>> {
+/** A file's bytes, read once, and only when small enough for a diagnostic read. */
+export async function readBoundedFile(file: string): Promise<Buffer> {
+  let size: number;
+  try { size = (await stat(file)).size; } catch { throw new CliError(`${path.basename(file)} could not be read.`); }
+  if (size > 16 * 1024 * 1024) throw new CliError(`${path.basename(file)} is too large for a diagnostic read.`);
+  try { return await readFile(file); } catch { throw new CliError(`${path.basename(file)} could not be read.`); }
+}
+export async function readJson(file: string, bytes?: Buffer): Promise<Record<string, unknown>> {
   try {
-    if ((await stat(file)).size > 16 * 1024 * 1024) throw new CliError(`${path.basename(file)} is too large for a diagnostic read.`);
-    const value: unknown = JSON.parse(await readFile(file, 'utf8'));
+    const value: unknown = JSON.parse((bytes ?? await readBoundedFile(file)).toString('utf8'));
     if (!record(value)) throw new CliError(`${path.basename(file)} must contain a JSON object.`);
     return value;
   } catch (error) {

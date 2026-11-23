@@ -2,6 +2,8 @@ import type { AccountRateLimits, AgentSubagentTree, AppGeneralSettings, AppTheme
 import { isHarnessProvider } from '@workspace/core/contracts/shared';
 import { withConversationId } from '@workspace/core/legacy-fields';
 import type { Mission } from '@workspace/core/missions';
+import type { MissionArtifacts, MissionRun } from '@workspace/core/mission-types';
+import { isFinishedMissionRun } from '@workspace/core/mission-execution';
 import type { Visualization } from '@workspace/core/visualize';
 import type { FullPersistedState, PersistedAgent, PersistedState } from '../state-persistence';
 import './agent-fields';
@@ -32,7 +34,8 @@ export type RosterData = {
   teams: Team[];
   agents: StoredRosterAgent[];
   automations: Automation[];
-  missions?: Mission[];
+  /** Without their documents, which live in `mission-documents`; a roster written before schema 7 has them inline. */
+  missions?: StoredMission[];
   workAssignments: WorkBacklogState['assignments'];
   /** Only the node list is read by anything; operations and activities are not persisted. */
   subagents: Record<string, { rootConversationId: string; nodes: Record<string, SubagentNode> }>;
@@ -57,11 +60,61 @@ export type VisualizationData = {
   visualization: Visualization;
 };
 
+/** The parts of a run that hold documents rather than state. */
+type RunDocuments = Pick<MissionRun, 'proposal' | 'draftTickets' | 'implementationResult'>;
+const runDocumentKeys = ['proposal', 'draftTickets', 'implementationResult'] as const satisfies readonly (keyof RunDocuments)[];
+
+/**
+ * A Mission as roster.json holds it: its state, and the name of the file that holds its documents. A roster written
+ * before schema 7, or a self-contained backup, holds the documents inline instead.
+ */
+export type StoredMission = Omit<Mission, 'artifacts'> & { artifacts?: MissionArtifacts; documents?: string };
+
+/** A Mission's documents, and those of its runs in the order of its runs: run ids are not unique in older data. */
+export type MissionDocuments = { artifacts: MissionArtifacts; runs: Array<{ id: string } & RunDocuments> };
+
 export type StoreFiles = {
   roster: RosterData;
   settings: SettingsData;
   visualizations: VisualizationData[];
 };
+
+/**
+ * Takes the documents out of a Mission: what roster.json keeps, and what goes to its documents file. What a finished
+ * run proposed is not kept anywhere: nothing reads it again.
+ */
+export function splitMissionDocuments(mission: StoredMission): { stored: StoredMission; documents: MissionDocuments | null } {
+  if (!mission.artifacts) return { stored: mission, documents: null };
+  const { artifacts, documents: _reference, ...state } = mission;
+  const runs: MissionDocuments['runs'] = [];
+  const execution = state.execution && { ...state.execution, runs: state.execution.runs.map(candidate => {
+    const kept = { ...candidate };
+    const moved: MissionDocuments['runs'][number] = { id: candidate.id };
+    for (const key of runDocumentKeys) {
+      if (kept[key] === undefined) continue;
+      if (!(key === 'proposal' && isFinishedMissionRun(candidate))) (moved as Record<string, unknown>)[key] = kept[key];
+      delete kept[key];
+    }
+    runs.push(moved);
+    return kept;
+  }) };
+  return { stored: { ...state, ...(execution ? { execution } : {}) }, documents: { artifacts, runs } };
+}
+
+/**
+ * Puts a Mission's documents back. Answers null when they do not belong to it: a run list that changed shape means the
+ * documents and the roster come from different saves.
+ */
+export function joinMissionDocuments(stored: StoredMission, documents: MissionDocuments): StoredMission | null {
+  const runs = stored.execution?.runs ?? [];
+  if (documents.runs.length !== runs.length || runs.some((candidate, index) => documents.runs[index]!.id !== candidate.id)) return null;
+  const { documents: _reference, ...state } = stored;
+  const execution = state.execution && { ...state.execution, runs: runs.map((candidate, index) => {
+    const { id: _id, ...moved } = documents.runs[index]!;
+    return { ...candidate, ...moved };
+  }) };
+  return { ...state, artifacts: documents.artifacts, ...(execution ? { execution } : {}) };
+}
 
 /** Splits the (already shared-view) persisted state into the on-disk files. */
 export function splitPersistedState(state: FullPersistedState): StoreFiles {
@@ -118,7 +171,8 @@ export function joinPersistedState(files: StoreFiles): PersistedState {
     (libraries[repository] ??= []).push(visualization);
   }
   return {
-    ...(roster.missions ? { missions: roster.missions } : {}),
+    // The store has put the documents back into every Mission before the state is joined.
+    ...(roster.missions ? { missions: roster.missions as Mission[] } : {}),
     ...(Object.keys(libraries).length ? { repositoryVisualizations: libraries } : {}),
     teams: roster.teams,
     agents: roster.agents.filter(isSupportedRosterAgent).map((agent) => persistedAgentFrom(agent, teamOfAgent.get(agent.id))),

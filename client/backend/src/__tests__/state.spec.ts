@@ -1,4 +1,5 @@
 import { product } from '@workspace/core/product';
+import { rosterSchemaVersion } from '../persistence/store-format';
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -116,7 +117,7 @@ describe('backend state loading', () => {
     await saveBackendSnapshot(snapshot);
 
     const persisted = JSON.parse(await readFile(path.join(homeDir, 'roster.json'), 'utf8')) as { schemaVersion: number; data: Record<string, unknown> };
-    expect(persisted.schemaVersion).toBe(6);
+    expect(persisted.schemaVersion).toBe(rosterSchemaVersion);
     expect(persisted.data).not.toHaveProperty('messages');
     await expect(readFile(path.join(homeDir, 'state.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(loadBackendSnapshot()).resolves.toMatchObject({ activeTeamId: 'team-app' });

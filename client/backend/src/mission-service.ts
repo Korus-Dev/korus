@@ -5,6 +5,7 @@ import type { Agent, AppSnapshot } from '@workspace/core/contracts';
 import { createMission, deleteMission, updateMission, type DeleteMissionInput, type Mission } from '@workspace/core/missions';
 import { isMissionScreenshotAgent } from './mission-screenshot-fixture';
 import type { CreateMissionInput, MissionRepository } from '@workspace/core/mission-types';
+import { dropFinishedRunProposals } from '@workspace/core/mission-execution';
 
 /** Serializes mission revisions and publishes them only after durable storage succeeds. */
 export class MissionService {
@@ -71,6 +72,8 @@ export class MissionService {
         ? structuredClone(this.snapshot)
         : { ...this.snapshot, missions: typeof scope === 'string' ? missions.map(mission => mission.id === scope ? structuredClone(mission) : mission) : structuredClone(missions) };
       const result = await mutate(candidate);
+      // What a finished run proposed is never read again; holding it would only grow every save and every snapshot.
+      for (const mission of candidate.missions ?? []) if (typeof scope !== 'string' || mission.id === scope) dropFinishedRunProposals(mission);
       await this.persist(candidate);
       if (scope === true) Object.assign(this.snapshot, candidate);
       else this.snapshot.missions = candidate.missions;

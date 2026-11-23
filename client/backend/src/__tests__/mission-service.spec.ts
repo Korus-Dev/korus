@@ -52,4 +52,19 @@ describe('MissionService', () => {
     expect(snapshot.teams[0]!.agentIds).toStrictEqual([]);
     expect(persist).toHaveBeenCalledOnce();
   });
+  it('stops holding what a run proposed once the run is finished, and keeps it while the run awaits review', async () => {
+    const snapshot = createInitialSnapshot();
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const service = new MissionService(snapshot, persist);
+    await service.mutate('create', { outcome: 'Billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
+    const mission = snapshot.missions![0]!;
+    const proposed = (id: string) => ({ id, stage: 'requirements' as const, memberId: snapshot.agents[0]!.id, status: 'awaitingReview' as const, skills: [], feedback: '', startedAt: '2026-11-01T00:00:00.000Z', proposal: structuredClone(mission.artifacts) });
+    await service.change(mission.id, current => { current.execution!.runs.push(proposed('mission-run-a'), proposed('mission-run-b')); });
+
+    await service.change(mission.id, current => { current.execution!.runs[0]!.status = 'accepted'; });
+
+    const [accepted, waiting] = snapshot.missions![0]!.execution!.runs;
+    expect(accepted).not.toHaveProperty('proposal');
+    expect(waiting!.proposal).toStrictEqual(mission.artifacts);
+  });
 });

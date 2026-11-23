@@ -5,7 +5,7 @@ import { withConversationId } from '@workspace/core/legacy-fields';
 import type { Mission } from '@workspace/core/missions';
 import { isVisualization } from '@workspace/core/visualize';
 import { StoreFormatError } from './store-format';
-import type { StoredRosterAgent, RosterData, SettingsData, VisualizationData } from './layout';
+import type { MissionDocuments, StoredMission, StoredRosterAgent, RosterData, SettingsData, VisualizationData } from './layout';
 import type { BrowserBookmark } from '@workspace/core/browser-bookmarks';
 
 /*
@@ -60,7 +60,7 @@ export const rosterSchema = z.looseObject({
   teams: z.array(entity<Team>('team')),
   agents: z.array(agentSchema),
   automations: z.array(entity<Automation>('automation')),
-  missions: z.array(entity<Mission>('mission')).optional(),
+  missions: z.array(entity<StoredMission>('mission')).optional(),
   workAssignments: z.record(z.string(), entity<WorkBacklogAssignment>('work assignment')),
   subagents: z.record(z.string(), z.looseObject({
     rootConversationId: z.string(),
@@ -87,6 +87,11 @@ export const visualizationSchema = z.looseObject({
   position: z.number().int().min(0),
   visualization: z.custom<VisualizationData['visualization']>(isVisualization, 'visualization is not valid'),
 }) satisfies z.ZodType<VisualizationData>;
+
+export const missionDocumentsSchema = z.looseObject({
+  artifacts: entity<MissionDocuments['artifacts']>('mission documents'),
+  runs: z.array(z.custom<MissionDocuments['runs'][number]>(value => isRecord(value) && typeof value.id === 'string', 'run documents must name their run')),
+}) satisfies z.ZodType<MissionDocuments>;
 
 export function parseData<T>(file: string, schema: z.ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data);

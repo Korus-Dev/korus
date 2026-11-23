@@ -1,7 +1,6 @@
 import type { AppSnapshot } from './contracts';
-import type { Mission, MissionRun } from './mission-types';
-
-const finishedRunStatuses: ReadonlySet<MissionRun['status']> = new Set(['accepted', 'cancelled', 'failed']);
+import type { Mission } from './mission-types';
+import { isFinishedMissionRun } from './mission-execution';
 
 /**
  * The snapshot as a desktop reads it from one moment to the next: without the bodies it never reads.
@@ -20,7 +19,7 @@ function compactMission(mission: Mission): Mission {
   const execution = mission.execution;
   if (!execution) return mission;
   const runs = mapChanged(execution.runs, (run) => {
-    if (run.proposal === undefined || !finishedRunStatuses.has(run.status)) return run;
+    if (run.proposal === undefined || !isFinishedMissionRun(run)) return run;
     const { proposal: _proposal, ...rest } = run;
     return rest;
   });

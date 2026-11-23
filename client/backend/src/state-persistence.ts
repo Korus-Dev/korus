@@ -10,7 +10,7 @@ import { isDelegationContext, isTurnDelegationOverrides, isDelegationUserInstruc
 import { isWorkProviderKind, workProviderKinds } from '@workspace/core/work-providers';
 import { readPersistedAgentHandoff } from '@workspace/core/agent-handoff';
 import { isWorktreeInitializationState } from '@workspace/core/worktree-initialization';
-import { isMission } from '@workspace/core/missions';
+import { isMission, type Mission } from '@workspace/core/missions';
 import { isThreadFlags, normalizeThreadFlags } from '@workspace/core/thread-flags';
 import { backendCodexHomeDir } from './state';
 import { restorePlanReview } from './persistence/legacy-plan-review';
@@ -222,7 +222,7 @@ export function snapshotFromPersistedState(value: unknown): AppSnapshot {
   const snapshot: AppSnapshot = {
     ...seed,
     ...(value.clientPreferences ? { clientPreferences: sanitizeClientPreferences(value.clientPreferences) } : {}),
-    ...(Array.isArray(value.missions) ? { missions: value.missions.map(migrateMissionSelection).filter(isMission).map(m => structuredClone(m)) } : {}),
+    ...(Array.isArray(value.missions) ? { missions: value.missions.flatMap(mission => { const read = readPersistedMission(mission); return read ? [structuredClone(read)] : []; }) } : {}),
     teams: teams.length > 0 ? teams : seed.teams,
     agents,
     ...(Object.keys(durableLibraries).length ? { repositoryVisualizations: durableLibraries } : {}),
@@ -1311,6 +1311,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return Boolean(error && typeof error === 'object' && 'code' in error);
+}
+
+/** A saved Mission as this build reads it, or null when it is not one. */
+export function readPersistedMission(value: unknown): Mission | null {
+  const migrated = migrateMissionSelection(value);
+  return isMission(migrated) ? migrated : null;
 }
 
 function migrateMissionSelection(value: unknown): unknown {

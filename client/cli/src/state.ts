@@ -1,6 +1,7 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
-import { CliError, fileExists, readJson, record, string, type CliOptions } from './context';
+import { CliError, fileExists, readBoundedFile, readJson, record, string, type CliOptions } from './context';
 import { request } from './rpc';
 
 export type AgentInfo = { id: string; name: string; provider: string; folder?: string; teamId?: string; status: string };
@@ -27,7 +28,10 @@ function missions(value: unknown): MissionInfo[] {
       }) };
   });
 }
-export async function loadState(options: CliOptions) {
+/** Which saved Missions need their documents read: tickets are among them, agents are not. */
+export type MissionDocumentsWanted = (missionId: string) => boolean;
+
+export async function loadState(options: CliOptions, wantDocuments: MissionDocumentsWanted = () => false) {
   if (!options.offline) {
     try {
       const result = await request(options, backendMethods.snapshotGet);
@@ -40,5 +44,21 @@ export async function loadState(options: CliOptions) {
   if (!await fileExists(roster)) return { source: 'saved' as const, agents: [], missions: [] };
   const envelope = await readJson(roster);
   if (!record(envelope.data)) throw new CliError('roster.json has an invalid envelope; no migration was attempted.');
-  return { source: 'saved' as const, agents: agents(envelope.data.agents), missions: missions(envelope.data.missions) };
+  return { source: 'saved' as const, agents: agents(envelope.data.agents), missions: missions(await withSavedDocuments(options.home, envelope.data.missions, wantDocuments)) };
+}
+/** Since roster schema 7 a Mission's documents, its tickets among them, are in the file its roster entry names. */
+async function withSavedDocuments(home: string, value: unknown, wanted: MissionDocumentsWanted): Promise<unknown> {
+  if (!Array.isArray(value)) return value;
+  return Promise.all(value.map(async mission => {
+    if (!record(mission) || typeof mission.documents !== 'string' || typeof mission.id !== 'string' || !wanted(mission.id)) return mission;
+    if (!/^[a-f0-9]{64}$/.test(mission.documents)) throw new CliError(`Mission ${mission.id} names invalid documents; no migration was attempted.`);
+    const file = path.join(home, 'mission-documents', `${mission.documents}.json`);
+    if (!await fileExists(file)) throw new CliError(`Mission ${mission.id}: its documents (mission-documents/${mission.documents}.json) are missing.`);
+    // The file is named by the digest of its bytes; any other bytes are damage, however valid they look.
+    const bytes = await readBoundedFile(file);
+    if (createHash('sha256').update(bytes).digest('hex') !== mission.documents) throw new CliError(`Mission ${mission.id}: its documents (mission-documents/${mission.documents}.json) are damaged.`);
+    const envelope = await readJson(file, bytes);
+    if (!record(envelope.data) || !record(envelope.data.artifacts)) throw new CliError(`Mission ${mission.id}: mission-documents/${mission.documents}.json is not readable.`);
+    return { ...mission, artifacts: envelope.data.artifacts };
+  }));
 }
