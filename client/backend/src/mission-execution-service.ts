@@ -1186,9 +1186,10 @@ export class MissionExecutionService {
     if (!memberId) throw new Error('The selected workspace member is unavailable.');
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
     const runId = createEntityId('mission-run');
-    const previousDraft = execution.runs.slice().reverse().find(run => run.stage === 'tickets' && run.draftTickets);
+    // Only the last Tickets run can hand its draft on: an accepted one has none left to hand.
+    const previousDraft = execution.runs.slice().reverse().find(run => run.stage === 'tickets');
     const draftTicketsBaseHash = missionTicketsHash(mission.artifacts.tickets);
-    const recoverDraft = previousDraft && previousDraft.status !== 'accepted'
+    const recoverDraft = previousDraft?.draftTickets && previousDraft.status !== 'accepted'
       && (previousDraft.draftTicketsBaseHash !== undefined
         ? previousDraft.draftTicketsBaseHash === draftTicketsBaseHash
         : mission.artifacts.tickets.length === 0);

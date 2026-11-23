@@ -90,6 +90,18 @@ describe('Mission documents', () => {
     expect((await load()).missions).toStrictEqual([withoutFinishedProposal(mission)]);
   });
 
+  it('drops the ticket draft of an accepted Tickets run, which duplicates the accepted tickets, and keeps a cancelled one', async () => {
+    const { snapshot, mission } = snapshotWithMission();
+    mission.execution!.runs.push(run(mission, 'mission-run-tickets', 'tickets', 'accepted', { draftTickets: structuredClone(mission.artifacts.tickets), draftTicketsBaseHash: 'a'.repeat(64) }));
+
+    await new AppStateStore(home).save(snapshot);
+
+    const runs = (await load()).missions![0]!.execution!.runs;
+    expect(runs.find(candidate => candidate.id === 'mission-run-tickets')).not.toHaveProperty('draftTickets');
+    expect(runs.find(candidate => candidate.id === 'mission-run-tickets')).not.toHaveProperty('draftTicketsBaseHash');
+    expect(runs.find(candidate => candidate.id === 'mission-run-draft')!.draftTickets).toHaveLength(1);
+  });
+
   it('keeps the last committed state when a save fails after writing the new documents', async () => {
     const { snapshot, mission } = snapshotWithMission();
     const store = new AppStateStore(home);

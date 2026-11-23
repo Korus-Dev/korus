@@ -92,9 +92,11 @@ export function splitMissionDocuments(mission: StoredMission): { stored: StoredM
     const moved: MissionDocuments['runs'][number] = { id: candidate.id };
     for (const key of runDocumentKeys) {
       if (kept[key] === undefined) continue;
-      if (!(key === 'proposal' && isFinishedMissionRun(candidate))) (moved as Record<string, unknown>)[key] = kept[key];
+      const finished = (key === 'proposal' && isFinishedMissionRun(candidate)) || (key === 'draftTickets' && candidate.status === 'accepted');
+      if (!finished) (moved as Record<string, unknown>)[key] = kept[key];
       delete kept[key];
     }
+    if (candidate.status === 'accepted') delete kept.draftTicketsBaseHash;
     runs.push(moved);
     return kept;
   }) };

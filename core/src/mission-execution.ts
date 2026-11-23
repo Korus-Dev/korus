@@ -45,15 +45,16 @@ export function isFinishedMissionRun(run: Pick<MissionRun, 'status'>): boolean {
 }
 
 /**
- * Drops the documents a finished run had proposed. An accepted proposal already became the Mission's documents, and
- * nothing reads the proposal of a run that will not be reviewed again. Answers whether anything was dropped.
+ * Drops the documents a finished run had proposed, and the ticket draft of an accepted Tickets run. An accepted
+ * proposal or draft already became the Mission's documents, and nothing reads the proposal of a run that will not be
+ * reviewed again. Drafts of cancelled and failed runs stay: the next Tickets run recovers them. Answers whether
+ * anything was dropped.
  */
 export function dropFinishedRunProposals(mission: Mission): boolean {
   let dropped = false;
   for (const run of mission.execution?.runs ?? []) {
-    if (run.proposal === undefined || !isFinishedMissionRun(run)) continue;
-    delete run.proposal;
-    dropped = true;
+    if (run.proposal !== undefined && isFinishedMissionRun(run)) { delete run.proposal; dropped = true; }
+    if (run.draftTickets !== undefined && run.status === 'accepted') { delete run.draftTickets; delete run.draftTicketsBaseHash; dropped = true; }
   }
   return dropped;
 }
