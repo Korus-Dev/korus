@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.59.0",
+  "currentVersion": "0.60.0",
   "releases": [
+    {
+      "version": "0.60.0",
+      "releasedAt": "2026-11-23",
+      "sourceSha256": "7e19a2f932de0045b25e0027ba9c59808027c57942c66e62444ac037194c4429",
+      "markdown": "### New features\n\n- **Restore backup:** If Korus can’t open its data at startup, it offers the newest compatible backup when one is available.\n\n### Improvements and fixes\n\n- **Performance:** Reduced stalls in large workspaces, with less data sent to the desktop, fewer Git status processes, and faster Mission boards.\n- **Mission scheduling:** The lead can schedule tickets without assigning workspace agents. In one-worker-per-repository mode, later tickets reuse the existing worker.\n- **Mission progress:** Ticket and stage changes stay current when work finishes or resumes.\n- **Mission reviews:** A summary is enough to submit a review. Use **Finish review** if the agent stopped before submitting it.\n- **Agent tools:** `create-agent` accepts speed labels such as Fast, and `close-agent` lets creators close running agents while keeping their worktrees and branches.\n- **Split layouts:** Fixed a seam in the header next to a collapsed sidebar.\n- **Analytics:** Updated model pricing.\n- **Desktop upgrades:** Korus 0.57.0 is the minimum version for a direct upgrade. Older installations can upgrade through 0.59.0 first."
+    },
     {
       "version": "0.59.0",
       "releasedAt": "2026-11-18",

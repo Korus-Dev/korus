@@ -2,6 +2,23 @@
 
 All notable Korus changes are recorded here.
 
+## [0.60.0] - 2026-11-23
+
+### New features
+
+- **Restore backup:** If Korus can’t open its data at startup, it offers the newest compatible backup when one is available.
+
+### Improvements and fixes
+
+- **Performance:** Reduced stalls in large workspaces, with less data sent to the desktop, fewer Git status processes, and faster Mission boards.
+- **Mission scheduling:** The lead can schedule tickets without assigning workspace agents. In one-worker-per-repository mode, later tickets reuse the existing worker.
+- **Mission progress:** Ticket and stage changes stay current when work finishes or resumes.
+- **Mission reviews:** A summary is enough to submit a review. Use **Finish review** if the agent stopped before submitting it.
+- **Agent tools:** `create-agent` accepts speed labels such as Fast, and `close-agent` lets creators close running agents while keeping their worktrees and branches.
+- **Split layouts:** Fixed a seam in the header next to a collapsed sidebar.
+- **Analytics:** Updated model pricing.
+- **Desktop upgrades:** Korus 0.57.0 is the minimum version for a direct upgrade. Older installations can upgrade through 0.59.0 first.
+
 ## [0.59.0] - 2026-11-18
 
 ### New features
