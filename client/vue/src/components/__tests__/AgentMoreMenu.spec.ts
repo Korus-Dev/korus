@@ -50,6 +50,12 @@ describe('AgentMoreMenu', () => {
     expect(rowText()).toStrictEqual(['Share', 'Usage 110 / $2.00']);
   });
 
+  it('shows how many turns contributed tokens when some turns were unmeasured', async () => {
+    client.api.getUsage.mockResolvedValue(usage([{ ...row('agent-1', 80_286, 0, null), started: 12, completed: 12, measuredTurns: 2 }]));
+    await openMenu(render());
+    expect(rowText()).toStrictEqual(['Share', 'Usage • 2/12 turns 80.3K / Unavailable']);
+  });
+
   it('asks the parent to share', async () => {
     client.api.getUsage.mockResolvedValue(usage([]));
     const wrapper = render();

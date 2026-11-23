@@ -26,6 +26,7 @@
                 }}</small></span
               >
             </div>
+            <span v-if="tokenCoverage" class="hero-coverage">{{ tokenCoverage }}</span>
           </div>
           <div class="hero-controls">
             <div id="usage-measure">
@@ -64,6 +65,7 @@ import {
   measureLabel,
   measureFormat,
   sumValues,
+  tokenCoverageLabel,
   inputRatio,
   type UsageMeasure,
   type UsageSeries,
@@ -111,6 +113,12 @@ const totalOf = (summary: UsageSummary | null | undefined) => {
       );
 };
 const total = computed(() => totalOf(props.current));
+const tokenCoverage = computed(() => isTokenMeasure.value
+  ? tokenCoverageLabel(
+      props.current.rows.reduce((sum, row) => sum + row.measuredTurns, 0),
+      props.current.rows.reduce((sum, row) => sum + row.started, 0),
+    )
+  : undefined);
 const delta = computed(() => {
   if (props.measure === "ratio") return null;
   if (
@@ -163,6 +171,10 @@ const delta = computed(() => {
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+.hero-coverage {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
 }
 .hero-number {
   display: flex;

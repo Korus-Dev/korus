@@ -75,6 +75,9 @@ export function usageFormat(
 ): string {
   return `${chartFormat(tokens, true)} / ${usdFormat(usd)}`;
 }
+export function tokenCoverageLabel(measured: number, turns: number, compact = false): string | undefined {
+  if (measured > 0 && measured < turns) return translate(compact ? 'analytics.tokenCoverageShort' : 'analytics.tokenCoverage', { measured, turns });
+}
 export const measureFormat = (
   value: number | null | undefined,
   measure: UsageMeasure,

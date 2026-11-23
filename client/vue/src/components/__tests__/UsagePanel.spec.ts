@@ -98,6 +98,9 @@ it.each(["unmeasured", "missing-total", "partial", "unavailable"])(
     ).toBe(
       state === "partial" ? "1.4" : "0",
     );
+    if (state === "partial") {
+      expect(wrapper.get(".hero-figure").text()).toContain("Tokens from 1 of 2 turns");
+    }
     expect(
       wrapper
         .findAll(".activity-stats .usage-stat__value")

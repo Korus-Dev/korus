@@ -20,7 +20,7 @@ import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { translate } from '../i18n';
 import { agentCostFor } from './agent-cost';
-import { usageFormat } from './usage-chart';
+import { tokenCoverageLabel, usageFormat } from './usage-chart';
 import { useUsageByAgent } from './use-usage-by-agent';
 
 const props = defineProps<{
@@ -40,7 +40,9 @@ const items = computed<AppMenuItem[]>(() => {
   const cost = agentCostFor(summary.value, [props.agentId]);
   if (loaded.value) {
     if (rows.length > 0) rows.push({ id: 'separator-cost', type: 'separator' });
-    rows.push({ id: 'usage', type: 'info', label: translate('surface.agentHeader.usage'), value: usageFormat(cost?.totalTokens, cost?.usd) });
+    rows.push({ id: 'usage', type: 'info', label: translate('surface.agentHeader.usage'),
+      description: cost?.totalTokens != null ? tokenCoverageLabel(cost.measuredTurns, cost.turns, true) : undefined,
+      value: usageFormat(cost?.totalTokens, cost?.usd) });
   }
   return rows;
 });

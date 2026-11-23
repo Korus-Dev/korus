@@ -136,6 +136,8 @@ export const messages = {
     mobileChanges: { files: 'Files', collapseAll: 'Collapse all', expandAll: 'Expand all' },
     analytics: {
       tokenReportingWarning: '{providers} turns are reported, but token usage and cost are unavailable.',
+      tokenCoverage: 'Tokens from {measured} of {turns} turns',
+      tokenCoverageShort: '{measured}/{turns} turns',
       cost: 'Cost', tokenShare: 'Usage share (tokens)', tokenMeasure: 'Token measure', ratio: 'Ratio', inputRatio: 'Input ratio', costUnavailable: 'Unavailable',
       costShareNote: 'Shares include priced usage only.', costShareUnit: 'USD · priced',
       pricingRegions: 'Pricing regions · {regions}', globalPricingRegion: 'Global', unreportedPricingRegion: 'Unreported (no surcharge)',

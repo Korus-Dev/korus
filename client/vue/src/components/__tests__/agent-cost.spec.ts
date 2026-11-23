@@ -12,7 +12,7 @@ const summary = (rows: UsageSummary['rows']): UsageSummary => ({ rows, recordedS
 describe('agentCostFor', () => {
   it('adds up the rows of the requested agents and ignores the others', () => {
     const total = agentCostFor(summary([row('a', 1000, 900, 100, cost(1.25)), row('b', 500, 0, 50, cost(0.5)), row('other', 9999, 0, 9, cost(99))]), ['a', 'b']);
-    expect(total).toStrictEqual({ usd: 1.75, coverage: 'complete', inputTokens: 1500, outputTokens: 150, totalTokens: 1650, cacheReadTokens: 900, turns: 4 });
+    expect(total).toStrictEqual({ usd: 1.75, coverage: 'complete', inputTokens: 1500, outputTokens: 150, totalTokens: 1650, cacheReadTokens: 900, turns: 4, measuredTurns: 4 });
   });
 
   it('is null when none of the agents has recorded usage, and when usage is unavailable', () => {

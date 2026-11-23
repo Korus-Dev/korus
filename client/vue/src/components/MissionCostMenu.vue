@@ -15,7 +15,7 @@ import { IconDots } from '@tabler/icons-vue';
 import type { Mission } from '@workspace/core/missions';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
-import { usageFormat } from './usage-chart';
+import { tokenCoverageLabel, usageFormat } from './usage-chart';
 import { missionCostGroups } from './mission-cost';
 import { useUsageByAgent } from './use-usage-by-agent';
 
@@ -35,10 +35,13 @@ const items = computed<AppMenuItem[]>(() => {
       id: `cost:${row.id}`,
       type: 'info',
       label: row.label ?? t(row.id === 'lead' ? 'missions.costLead' : 'missions.costOther'),
+      description: row.cost!.totalTokens != null ? tokenCoverageLabel(row.cost!.measuredTurns, row.cost!.turns, true) : undefined,
       value: usageFormat(row.cost!.totalTokens, row.cost!.usd),
     })),
     { id: 'separator-total', type: 'separator' },
-    { id: 'cost:total', type: 'info', label: t('missions.costTotal'), value: usageFormat(total.totalTokens, total.usd) },
+    { id: 'cost:total', type: 'info', label: t('missions.costTotal'),
+      description: total.totalTokens != null ? tokenCoverageLabel(total.measuredTurns, total.turns, true) : undefined,
+      value: usageFormat(total.totalTokens, total.usd) },
   ];
 });
 </script>
