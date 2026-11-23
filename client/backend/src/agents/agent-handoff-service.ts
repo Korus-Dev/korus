@@ -1,6 +1,6 @@
 import { product } from '@workspace/core/product';
 import type { Agent, AppSnapshot, CreateAgentInput } from '@workspace/core/contracts';
-import { agentHandoffBlocker, handoffInProgress, handoffNoteLimit, type AgentHandoff, type AgentHandoffInput } from '@workspace/core/agent-handoff';
+import { agentHandoffBlocker, handoffNoteLimit, type AgentHandoff, type AgentHandoffInput } from '@workspace/core/agent-handoff';
 import { conversationRefFromAgent } from '@workspace/core/conversation-ref';
 import { resolveAgentProvider } from '@workspace/core/agent-providers';
 import { closeAgentInSnapshot } from '@workspace/core/agent-manager';
@@ -38,19 +38,6 @@ export class AgentHandoffService {
     this.running.set(key, operation);
     void operation.finally(() => this.running.delete(key)).catch(() => undefined);
     return operation;
-  }
-
-  async recover(): Promise<void> {
-    let changed = false;
-    for (const agent of this.options.snapshot.agents) {
-      const handoff = agent.handoff;
-      if (!handoff || handoff.phase === 'complete') continue;
-      if (!handoff.targetAgentId) { this.abandon(agent); changed = true; continue; }
-      if (!handoffInProgress(agent)) continue;
-      handoff.phase = 'failed';
-      changed = true;
-    }
-    if (changed) await this.options.persist();
   }
 
   /** Without a replacement nothing changed, so the handoff leaves no trace and the next one starts over. */

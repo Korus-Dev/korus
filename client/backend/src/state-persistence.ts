@@ -17,7 +17,7 @@ import { restorePlanReview } from './persistence/legacy-plan-review';
 import { sanitizeClientPreferences } from '@workspace/core/client-preferences';
 import { isAutomationTarget } from '@workspace/core/automation-manager';
 import { normalizeAutomationSchedule } from '@workspace/core/automation-schedule';
-import type { AccountRateLimits, Agent, HarnessProvider, AgentContextUsage, AgentSubagentTree, AgentWorkspaceIdentity, AppGeneralSettings, AppSnapshot, ProviderDefaults, ProviderSessionData, Automation, AutomationExecutionLogEntry, OpenInApplication, RemoteConnection, RemoteConnectionStatus, RemoteConnectionTransport, RemoteTeamLink, RemoteConnectionsState, SourceFolderState, SubagentActivity, SubagentNode, SubagentOperation, Team, ThreadGoal, ThreadPlan, ThreadPlanKind, ThreadPlanStatus, ThreadPlanStep, WorkBacklogAssignment, WorkBacklogState, WorkIntegrationConnection, WorkIntegrationStatus, WorkProviderKind, WorkProviderSettings } from '@workspace/core/contracts';
+import type { Agent, HarnessProvider, AgentContextUsage, AgentSubagentTree, AgentWorkspaceIdentity, AppGeneralSettings, AppSnapshot, ProviderDefaults, ProviderSessionData, Automation, AutomationExecutionLogEntry, OpenInApplication, RemoteConnection, RemoteConnectionStatus, RemoteConnectionTransport, RemoteTeamLink, RemoteConnectionsState, SourceFolderState, SubagentActivity, SubagentNode, SubagentOperation, Team, ThreadGoal, ThreadPlan, ThreadPlanKind, ThreadPlanStatus, ThreadPlanStep, WorkBacklogAssignment, WorkBacklogState, WorkIntegrationConnection, WorkIntegrationStatus, WorkProviderKind, WorkProviderSettings } from '@workspace/core/contracts';
 import { sanitizeGitRemoteUrl } from '@workspace/core/git-remote';
 import { normalizeGeneralSettings, normalizeSourceFolderState, normalizeThemeSettings } from '@workspace/core/settings';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -38,7 +38,6 @@ export type PersistedState = {
   automations?: Automation[];
   activeTeamId: string | null;
   activeAgentId: string | null;
-  accountRateLimits?: AccountRateLimits;
   subagentTrees?: Record<string, AgentSubagentTree>;
   workBacklog?: WorkBacklogState;
   remoteConnections?: RemoteConnectionsState;
@@ -118,8 +117,6 @@ export function persistedStateFromSnapshot(snapshot: AppSnapshot): FullPersisted
     automations: snapshot.automations.map(cloneAutomation),
     activeTeamId: snapshot.activeTeamId,
     activeAgentId: snapshot.activeAgentId,
-    // Only Codex quotas outlive a restart, under their original name.
-    ...(snapshot.providerAccountRateLimits?.codex ? { accountRateLimits: { ...snapshot.providerAccountRateLimits.codex } } : {}),
     subagentTrees: cloneSubagentTrees(snapshot.subagentTrees),
     workBacklog: cloneWorkBacklogState(snapshot.workBacklog),
     remoteConnections: cloneRemoteConnectionsState(snapshot.remoteConnections),
@@ -201,7 +198,6 @@ export function snapshotFromPersistedState(value: unknown): AppSnapshot {
 
   value = migrateRemoteTeamLinks(value);
   if (!isRecord(value)) return seed;
-  const accountRateLimits = sanitizeAccountRateLimits(value.accountRateLimits);
   const workBacklog = sanitizeWorkBacklogState(value.workBacklog, seed.workBacklog);
   const remoteConnections = sanitizeRemoteConnectionsState(value.remoteConnections, seed.remoteConnections);
   const remoteConnectionIds = new Set(remoteConnections.connections.map((connection) => connection.id));
@@ -231,7 +227,6 @@ export function snapshotFromPersistedState(value: unknown): AppSnapshot {
       .filter((automation): automation is Automation => Boolean(automation)),
     activeTeamId: typeof value.activeTeamId === 'string' ? value.activeTeamId : null,
     activeAgentId: typeof value.activeAgentId === 'string' ? value.activeAgentId : null,
-    ...(accountRateLimits ? { providerAccountRateLimits: { codex: accountRateLimits } } : {}),
     subagentTrees: sanitizeSubagentTrees(value.subagentTrees),
     workBacklog,
     remoteConnections,
@@ -719,40 +714,6 @@ function nullableNumber(value: unknown): number | null | undefined {
   }
 
   return typeof value === 'number' ? value : undefined;
-}
-
-function sanitizeAccountRateLimits(value: unknown): AccountRateLimits | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  return {
-    limitId: nullableString(value.limitId),
-    limitName: nullableString(value.limitName),
-    primary: sanitizeAccountRateLimitWindow(value.primary),
-    secondary: sanitizeAccountRateLimitWindow(value.secondary),
-    credits: value.credits ?? null,
-    individualLimit: value.individualLimit ?? null,
-    planType: nullableString(value.planType),
-    rateLimitReachedType: nullableString(value.rateLimitReachedType),
-  };
-}
-
-function sanitizeAccountRateLimitWindow(value: unknown): AccountRateLimits['primary'] {
-  if (!isRecord(value) || typeof value.usedPercent !== 'number') {
-    return null;
-  }
-
-  return {
-    ...(typeof value.label === 'string' ? { label: value.label } : {}),
-    usedPercent: value.usedPercent,
-    windowDurationMins: typeof value.windowDurationMins === 'number' ? value.windowDurationMins : null,
-    resetsAt: typeof value.resetsAt === 'number' ? value.resetsAt : null,
-  };
-}
-
-function nullableString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
 }
 
 function cloneRemoteConnectionsState(state: RemoteConnectionsState): RemoteConnectionsState {

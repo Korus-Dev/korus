@@ -1,5 +1,6 @@
+import type { DesignCheckpoint, DesignDocument } from '@workspace/core/design';
 import { z } from 'zod';
-import type { AccountRateLimits, AppGeneralSettings, AppThemeSettings, Automation, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogAssignment, WorkBacklogState } from '@workspace/core/contracts';
+import type { AppGeneralSettings, AppThemeSettings, Automation, AutomationExecutionLogEntry, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogAssignment, WorkBacklogState } from '@workspace/core/contracts';
 import { isHarnessProvider } from '@workspace/core/contracts/shared';
 import { withConversationId } from '@workspace/core/legacy-fields';
 import type { Mission } from '@workspace/core/missions';
@@ -65,9 +66,19 @@ export const rosterSchema = z.looseObject({
   subagents: z.record(z.string(), z.looseObject({
     rootConversationId: z.string(),
     nodes: z.record(z.string(), entity<SubagentNode>('subagent node')),
-  })),
-  accountRateLimits: entity<AccountRateLimits>('account rate limits').optional(),
+  })).optional(),
 }) satisfies z.ZodType<RosterData>;
+
+/** A design's file: its document and checkpoints. The agent's workspace state stays in roster.json. */
+export const designSchema = z.looseObject({
+  document: entity<DesignDocument>('design document'),
+  checkpoints: z.array(entity<DesignCheckpoint>('design checkpoint')),
+});
+
+/** An automation's run log. */
+export const automationLogSchema = z.looseObject({
+  executionLog: z.array(entity<AutomationExecutionLogEntry>('automation run')),
+});
 
 export const settingsSchema = z.looseObject({
   settings: entity<AppGeneralSettings>('settings'),

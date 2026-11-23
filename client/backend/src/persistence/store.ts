@@ -5,7 +5,7 @@ import type { DelegatedTask } from '@workspace/core/delegated-task';
 import { tasksSchema } from './task-schema';
 import { mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { AppSnapshot } from '@workspace/core/contracts';
+import type { AppSnapshot, Automation } from '@workspace/core/contracts';
 import { projectClientSnapshot } from '@workspace/core/client-preferences';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
 import { product } from '@workspace/core/product';
@@ -14,9 +14,9 @@ import type { Mission } from '@workspace/core/missions';
 import { persistedStateFromSnapshot, readPersistedMission, snapshotFromPersistedState } from '../state-persistence';
 import { backupContent, backupFile } from './backup';
 import { UnchangedWrites } from './unchanged-writes';
-import { isSupportedRosterAgent, joinMissionDocuments, joinPersistedState, preserveUnsupportedAgents, splitMissionDocuments, splitPersistedState, type RosterData, type StoreFiles, type StoredMission, type VisualizationData } from './layout';
+import { isSupportedRosterAgent, joinMissionDocuments, joinPersistedState, preserveUnsupportedAgents, splitMissionDocuments, splitPersistedState, type RosterData, type StoreFiles, type StoredMission, type StoredRosterAgent, type VisualizationData } from './layout';
 import { migrateData, renameProviderFields, rosterMigrations, storeMigrations } from './migrations';
-import { missionDocumentsSchema, parseData, rosterSchema, settingsSchema, visualizationSchema } from './schema';
+import { automationLogSchema, designSchema, missionDocumentsSchema, parseData, rosterSchema, settingsSchema, visualizationSchema } from './schema';
 import { StoreFormatError, parseStoreFile, serializeStoreFile, storeSchemaVersion, rosterSchemaVersion } from './store-format';
 
 const rosterFile = 'roster.json';
@@ -29,6 +29,10 @@ const visualizationsDirectory = 'visualizations';
  * the daemon, unlike `missions/<id>`, where Mission agents work.
  */
 const missionDocumentsDirectory = 'mission-documents';
+/** One file per design, named by its id. roster.json names the designs of each agent; a design it no longer names is deleted. */
+const designsDirectory = 'designs';
+/** The run log of each automation that has one, named by its id; the automation itself stays in roster.json. */
+const automationLogsDirectory = 'automations';
 const incompleteSuffix = '-incomplete';
 const backupsDirectory = 'backups';
 const legacyFile = 'state.json';
@@ -163,7 +167,7 @@ export class AppStateStore {
   /** A restored legacy file replaces the layout, so keep whatever was there. */
   private async archiveExistingLayout(): Promise<void> {
     const existing: string[] = [];
-    for (const name of [rosterFile, settingsFile, visualizationsDirectory, missionDocumentsDirectory]) {
+    for (const name of [rosterFile, settingsFile, visualizationsDirectory, missionDocumentsDirectory, designsDirectory, automationLogsDirectory]) {
       if (await stat(this.absolute(name)).then(() => true, ignoreMissing(false))) existing.push(name);
     }
     // An archive is staged under an incomplete name and only named once it holds the whole layout. An interrupted
@@ -234,6 +238,9 @@ export class AppStateStore {
       for (const mission of missions) dropFinishedRunProposals(mission as Mission);
       files.roster = { ...files.roster, missions };
     }
+    // Every agent, unsupported ones included: their designs are kept for the build that can run them.
+    files.roster = { ...files.roster, agents: await Promise.all(files.roster.agents.map(agent => this.withDesigns(agent, written))) };
+    files.roster = { ...files.roster, automations: await Promise.all(files.roster.automations.map(automation => this.withLog(automation, written))) };
     written.set(rosterFile, rosterText);
     for (const { relative, text } of await this.readVisualizationFiles()) {
       try {
@@ -275,6 +282,38 @@ export class AppStateStore {
     return mission;
   }
 
+  /** An agent with the designs its roster entry names. A missing design stops the load: the next save would drop it. */
+  private async withDesigns<Agent extends StoredRosterAgent>(agent: Agent, written: Map<string, string>): Promise<Agent> {
+    if (!Array.isArray(agent.designWorkspaces) || !agent.designWorkspaces.some(isDesignReference)) return agent;
+    const designWorkspaces = [];
+    for (const stored of agent.designWorkspaces as unknown[]) {
+      if (!isDesignReference(stored)) { designWorkspaces.push(stored); continue; }
+      const relative = designPath(stored.design);
+      const text = written.get(relative) ?? await readIfExists(this.absolute(...relative.split('/')));
+      if (text === null) throw new StoreFormatError(`${relative}, a design of agent ${agent.id}, is missing. Restore roster.json and the ${designsDirectory} folder from the ${backupsDirectory} folder.`);
+      const { document, checkpoints } = parseData(relative, designSchema, parseStoreFile(relative, text).data);
+      const { design: _design, ...state } = stored;
+      designWorkspaces.push({ ...state, document, checkpoints });
+      written.set(relative, text);
+    }
+    return { ...agent, designWorkspaces };
+  }
+
+  /** An automation with its log. A log is history, not content: one that cannot be read is left empty. */
+  private async withLog(automation: Automation, written: Map<string, string>): Promise<Automation> {
+    const relative = automationLogPath(automation.id);
+    const text = await readIfExists(this.absolute(...relative.split('/')));
+    if (text === null) return automation;
+    try {
+      const { executionLog } = parseData(relative, automationLogSchema, parseStoreFile(relative, text).data);
+      written.set(relative, text);
+      return { ...automation, executionLog };
+    } catch (error) {
+      this.options.log?.(`Skipping ${relative}: ${error instanceof Error ? error.message : String(error)}`);
+      return automation;
+    }
+  }
+
   private async readVisualizationFiles(): Promise<Array<{ relative: string; text: string }>> {
     const root = this.absolute(visualizationsDirectory);
     const directories = await readdir(root, { withFileTypes: true }).catch(ignoreMissing([]));
@@ -308,7 +347,21 @@ export class AppStateStore {
     files.set(settingsFile, serializeStoreFile({ ...settings, ...(this.telemetrySettings !== undefined ? { telemetry: this.telemetrySettings } : {}) }));
     const missions = roster.missions && storeMissionDocuments(roster.missions);
     for (const [relative, text] of missions?.files ?? []) files.set(relative, text);
-    files.set(rosterFile, serializeStoreFile(this.withUnsupportedAgents(missions ? { ...roster, missions: missions.missions } : roster), rosterSchemaVersion));
+    const agents = roster.agents.map(agent => storeDesigns(agent, files));
+    const automations = roster.automations.map(({ executionLog, ...automation }) => {
+      if (executionLog.length) files.set(automationLogPath(automation.id), serializeStoreFile({ executionLog }));
+      return automation as Automation;
+    });
+    const stored = this.withUnsupportedAgents({ ...roster, agents, automations, ...(missions ? { missions: missions.missions } : {}) });
+    // Designs of agents this build cannot run are kept as they were read.
+    for (const agent of stored.agents) {
+      for (const workspace of Array.isArray(agent.designWorkspaces) ? agent.designWorkspaces as unknown[] : []) {
+        const relative = isDesignReference(workspace) ? designPath(workspace.design) : null;
+        const text = relative && this.written.get(relative);
+        if (relative && text && !files.has(relative)) files.set(relative, text);
+      }
+    }
+    files.set(rosterFile, serializeStoreFile(stored, rosterSchemaVersion));
     return files;
   }
 
@@ -355,15 +408,17 @@ export class AppStateStore {
     }
     // Versions a failed save or an interrupted migration left behind are collected too. The save is committed by
     // now: a version that cannot be removed is reported and collected by a later save, never failing this one.
-    for (const name of await readdir(this.absolute(missionDocumentsDirectory)).catch(() => [] as string[])) {
-      const relative = `${missionDocumentsDirectory}/${name}`;
-      if (desired.has(relative)) continue;
-      try {
-        await unlink(this.absolute(missionDocumentsDirectory, name)).catch(ignoreMissing(undefined));
-        this.files.forget(this.absolute(missionDocumentsDirectory, name));
-        this.written.delete(relative);
-      } catch (error) {
-        this.options.log?.(`Could not remove ${relative}; a later save will: ${error instanceof Error ? error.message : String(error)}`);
+    for (const directory of [missionDocumentsDirectory, designsDirectory, automationLogsDirectory]) {
+      for (const name of await readdir(this.absolute(directory)).catch(() => [] as string[])) {
+        const relative = `${directory}/${name}`;
+        if (desired.has(relative)) continue;
+        try {
+          await unlink(this.absolute(directory, name)).catch(ignoreMissing(undefined));
+          this.files.forget(this.absolute(directory, name));
+          this.written.delete(relative);
+        } catch (error) {
+          this.options.log?.(`Could not remove ${relative}; a later save will: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
     }
   }
@@ -378,8 +433,39 @@ function visualizationPath(data: VisualizationData): string {
   const slug = (repository.split('/').filter(Boolean).pop() ?? 'repository').replace(/[^a-zA-Z0-9._-]/g, '-');
   const hash = createHash('sha1').update(repository).digest('hex').slice(0, 8);
   const id = data.visualization.id;
-  const safeId = /^[a-zA-Z0-9._-]+$/.test(id) ? id : `${id.replace(/[^a-zA-Z0-9._-]/g, '_')}-${createHash('sha1').update(id).digest('hex').slice(0, 8)}`;
-  return `${visualizationsDirectory}/${slug}-${hash}/${safeId}.json`;
+  return `${visualizationsDirectory}/${slug}-${hash}/${safeFileName(id)}.json`;
+}
+
+/** An id as a file name: as it is when it is safe, otherwise made safe and kept unique. */
+function safeFileName(id: string): string {
+  return /^[a-zA-Z0-9._-]+$/.test(id) ? id : `${id.replace(/[^a-zA-Z0-9._-]/g, '_')}-${createHash('sha1').update(id).digest('hex').slice(0, 8)}`;
+}
+
+function automationLogPath(id: string): string {
+  return `${automationLogsDirectory}/${safeFileName(id)}.json`;
+}
+
+function designPath(id: string): string {
+  return `${designsDirectory}/${safeFileName(id)}.json`;
+}
+
+/** A design workspace as roster.json holds it once its design has its own file. */
+type DesignReference = Record<string, unknown> & { design: string };
+function isDesignReference(value: unknown): value is DesignReference {
+  return Boolean(value) && typeof value === 'object' && typeof (value as { design?: unknown }).design === 'string';
+}
+
+/** Moves each design of an agent to its file, leaving the agent the workspace state and the design's id. */
+function storeDesigns<Agent extends StoredRosterAgent>(agent: Agent, files: Map<string, string>): Agent {
+  if (!Array.isArray(agent.designWorkspaces)) return agent;
+  const designWorkspaces = (agent.designWorkspaces as Array<Record<string, unknown>>).map(workspace => {
+    const document = workspace.document as { id?: unknown } | null | undefined;
+    if (!document || typeof document.id !== 'string') return workspace;
+    const { document: _document, checkpoints, ...state } = workspace;
+    files.set(designPath(document.id), serializeStoreFile({ document, checkpoints }));
+    return { ...state, design: document.id };
+  });
+  return { ...agent, designWorkspaces };
 }
 
 function missionDocumentsPath(digest: string): string {

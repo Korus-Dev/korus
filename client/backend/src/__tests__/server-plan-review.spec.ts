@@ -39,6 +39,7 @@ it('routes a native proposal → saved feedback → revision → explicit approv
     agent.status = { type: 'idle' };
     expect(await respond({ reviewId: agent.planReview!.id, resolution: 'accept' })).not.toHaveProperty('error');
     expect(sentPrompts().at(-1)).toEqual({ agent: expect.objectContaining({ id: agent.id }), prompt: 'implement the plan', options: { planMode: false } });
-    expect((await new AppStateStore(home).load()).agents[0]!.planReview?.status).toBe('accept');
+    // Once accepted, the review is not kept across a restart.
+    expect((await new AppStateStore(home).load()).agents[0]).not.toHaveProperty('planReview');
   } finally { await server.close(); await rm(home, { recursive: true, force: true }); }
 });

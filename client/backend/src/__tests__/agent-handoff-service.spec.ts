@@ -91,14 +91,4 @@ describe('agent handoff', () => {
     f.source.status = { type: 'working' };
     await expect(f.service.run(f.source.id, f.input)).rejects.toThrow('finish');
   });
-
-  it('lets the next handoff start over after an interrupted one', async () => {
-    const f = fixture();
-    f.source.handoff = { ...f.input, sourceAgentId: 'source', sourceTitle: 'Worker', sourceRef: { provider: 'codex', conversationId: 'original' }, phase: 'preparing' };
-    await f.service.recover();
-    expect(f.abandoned).toHaveBeenCalledWith(f.source);
-
-    await f.service.run(f.source.id, f.input);
-    expect(f.start).toHaveBeenCalledOnce();
-  });
 });

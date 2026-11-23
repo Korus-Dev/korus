@@ -425,9 +425,11 @@ blank. Electron never passes its data directory.
 
 | File | Content |
 | --- | --- |
-| `roster.json` | teams, agents, automations, Mission state, work assignments, review ledgers |
+| `roster.json` | teams, agents with their subagents, automations, Mission state, work assignments, review ledgers |
 | `mission-documents/<sha256>.json` | a Mission's documents and those of its runs, one immutable file per version |
 | `missions/<id>/` | a Mission's working folder for its agents; deleted with the Mission |
+| `designs/<id>.json` | a design's document and checkpoints, one file per design; deleted with the design or its agent |
+| `automations/<id>.json` | an automation's run log; deleted with the automation or when its log is cleared |
 | `settings.json` | preferences, theme, source folder, remote connections, work integrations, private telemetry choice and identity |
 | `document-workspaces.json` | per-client, per-agent open tab references and transient Markdown backing bytes |
 | `tasks.json` | durable delegated tasks (additive; absent means none) |
@@ -452,6 +454,12 @@ Rules:
 - Roster, settings, tasks, document workspaces and visualizations use `{ schemaVersion, writtenBy, data }`. A build refuses to
   read or rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
   than becoming empty (except an unreadable visualization, which is skipped).
+- An agent's design workspaces stay in `roster.json` with only their state and the id
+  of their design; the design itself is in `designs/<id>.json`. A save writes the
+  design files before `roster.json` and then deletes those it no longer names. A
+  design the roster names but cannot find stops startup rather than lose it.
+- An automation stays in `roster.json`; its run log, when it has one, is in
+  `automations/<id>.json`. A log that cannot be read is skipped, not fatal.
 - A Mission's documents (its artifacts, and the proposals, ticket drafts and evidence
   of its runs, in run order) are in `mission-documents/<sha256>.json`, named by the
   digest of their bytes and never rewritten. A save writes new versions, commits

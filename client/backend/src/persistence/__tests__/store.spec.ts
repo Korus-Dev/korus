@@ -238,7 +238,7 @@ describe('AppStateStore', () => {
     const engine = (roster.data.agents as Array<{ engine: Record<string, unknown> }>)[0]!.engine;
     engine.futureEngineField = true;
     (engine.session as Record<string, unknown>).futureSessionField = 'extra';
-    (roster.data.subagents as Record<string, Record<string, unknown>>)[agent.id]!.futureTreeField = true;
+    ((roster.data.agents as Array<{ id: string; subagents: Record<string, unknown> }>).find(candidate => candidate.id === agent.id)!.subagents).futureTreeField = true;
     await writeFile(file('roster.json'), JSON.stringify(roster));
     const settings = await readJson('settings.json');
     settings.data.futureSettingsField = true;
@@ -276,7 +276,7 @@ describe('AppStateStore', () => {
     teams[0]!.activeAgentId = unknown.id;
     const membership = [...teams[0]!.agentIds];
     const subagents = { rootConversationId: 'future-root', nodes: { child: { opaque: true } } };
-    (roster.data.subagents as Record<string, unknown>)[unknown.id] = subagents;
+    Object.assign(unknown, { subagents });
     const assignment = { agentId: unknown.id, opaque: 'future-assignment' };
     (roster.data.workAssignments as Record<string, unknown>).future = assignment;
     await writeFile(file('roster.json'), JSON.stringify(roster));
@@ -298,7 +298,7 @@ describe('AppStateStore', () => {
     const saved = await readJson('roster.json');
     expect((saved.data.agents as unknown[])[1]).toStrictEqual(unknown);
     expect((saved.data.teams as typeof teams)[0]!.agentIds).toStrictEqual(membership);
-    expect((saved.data.subagents as Record<string, unknown>)[unknown.id]).toStrictEqual(subagents);
+    expect((saved.data.agents as Array<{ subagents?: unknown }>)[1]!.subagents).toStrictEqual(subagents);
     expect((saved.data.workAssignments as Record<string, unknown>).future).toStrictEqual(assignment);
     const restarted = new AppStateStore(home);
     const reloaded = await restarted.load();

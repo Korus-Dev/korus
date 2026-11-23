@@ -59,7 +59,7 @@ describe('store layout', () => {
     expect(roster.agents[0]!.engine).toStrictEqual({ kind: 'codex', settings: { } });
   });
 
-  it('drops finished execution state but retains the latest plan decision', () => {
+  it('drops finished execution state and resolved plan reviews', () => {
     const snapshot = createInitialSnapshot();
     const [finished, active] = snapshot.agents;
     finished!.plan = plan('completed');
@@ -73,7 +73,7 @@ describe('store layout', () => {
 
     expect(restored.agents[0]).not.toHaveProperty('plan');
     expect(restored.agents[0]).not.toHaveProperty('goal');
-    expect(restored.agents[0]!.planReview?.status).toBe('accept');
+    expect(restored.agents[0]).not.toHaveProperty('planReview');
     expect(restored.agents[1]!.plan?.status).toBe('inProgress');
     expect(restored.agents[1]!.goal?.status).toBe('active');
     expect(restored.agents[1]!.planReview?.status).toBe('pending');
@@ -102,7 +102,8 @@ describe('store layout', () => {
 
     const { roster } = splitPersistedState(persistedStateFromSnapshot(snapshot));
 
-    expect(roster.subagents).toStrictEqual({ [agentId]: { rootConversationId: 'root', nodes: { child: node } } });
+    expect(roster).not.toHaveProperty('subagents');
+    expect(roster.agents.flatMap(agent => 'subagents' in agent ? [[agent.id, agent.subagents]] : [])).toStrictEqual([[agentId, { rootConversationId: 'root', nodes: { child: node } }]]);
     expect(roundTrip(snapshot).subagentTrees).toStrictEqual({ [agentId]: { rootConversationId: 'root', nodes: { child: node }, operations: {}, activities: {} } });
   });
 

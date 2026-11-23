@@ -5,7 +5,9 @@ import backendPackage from '../../package.json';
 export const storeSchemaVersion = 2;
 // Mixed-host teams require a reader that retains remote links and collaboration authority.
 // Schema 7: Mission documents live in `mission-documents`, not in roster.json.
-export const rosterSchemaVersion = 7;
+// Schema 8: each design lives in `designs/<id>.json`, run logs in `automations/<id>.json`, and each agent keeps its
+// own subagents.
+export const rosterSchemaVersion = 8;
 const storeWrittenBy = `daemon ${backendPackage.version}`;
 
 export class StoreFormatError extends Error {

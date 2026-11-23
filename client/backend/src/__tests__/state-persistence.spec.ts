@@ -49,7 +49,9 @@ describe('state persistence', () => {
     const rosterBefore = JSON.parse(await readFile(path.join(home, 'roster.json'), 'utf8'));
     const restored = await new AppStateStore(home).load();
     expect(isAppSnapshot(restored)).toBe(true);
-    expect(restored.agents.find(item => item.id === agent.id)).toStrictEqual(agent);
+    // A handoff only lives while it runs.
+    const { handoff: _handoff, ...stored } = agent;
+    expect(restored.agents.find(item => item.id === agent.id)).toStrictEqual(stored);
     expect(restored.general.providerHomes).toStrictEqual(snapshot.general.providerHomes);
     expect(restored.general.providerEnabled).toStrictEqual(snapshot.general.providerEnabled);
     expect(restored.general.providerModelDefaults).toStrictEqual(snapshot.general.providerModelDefaults);
@@ -809,7 +811,7 @@ describe('state persistence', () => {
       expect(data).not.toHaveProperty('providerRuntimes');
       expect(data).not.toHaveProperty('appServer');
     }
-    expect(written.accountRateLimits).toStrictEqual(snapshot.providerAccountRateLimits?.codex);
+    expect(written).not.toHaveProperty('accountRateLimits');
     expect(written.activeTeamId).toBe('team-app');
     const writtenAgent = (written.agents as Array<Record<string, unknown>>)[0];
     expect(writtenAgent.engine).toStrictEqual({
@@ -1031,7 +1033,7 @@ describe('state persistence', () => {
       updatedAt: '2026-06-05T00:00:00.000Z',
     });
     expect(restored.providerRuntimes).toStrictEqual(createEmptySnapshot().providerRuntimes);
-    expect(restored.providerAccountRateLimits?.codex).toStrictEqual(snapshot.providerAccountRateLimits?.codex);
+    expect(restored.providerAccountRateLimits).toBeUndefined();
     expect(restored.workBacklog.assignments).toStrictEqual({
       'github:nbonamy/agent-workspace#12': {
         provider: 'github',

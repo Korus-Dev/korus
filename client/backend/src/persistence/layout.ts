@@ -1,4 +1,4 @@
-import type { AccountRateLimits, AgentSubagentTree, AppGeneralSettings, AppThemeSettings, Automation, ProviderDefaults, ProviderSessionData, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogState } from '@workspace/core/contracts';
+import type { AgentSubagentTree, AppGeneralSettings, AppThemeSettings, Automation, ProviderDefaults, ProviderSessionData, RemoteConnection, SourceFolderState, SubagentNode, Team, WorkBacklogState } from '@workspace/core/contracts';
 import { isHarnessProvider } from '@workspace/core/contracts/shared';
 import { withConversationId } from '@workspace/core/legacy-fields';
 import type { Mission } from '@workspace/core/missions';
@@ -20,7 +20,10 @@ type Engine =
   | { kind: 'codex'; session?: { conversationId: string }; settings?: Omit<CodexDefaults, 'kind'> }
   | { kind: 'claude'; session?: Omit<ClaudeSession, 'kind'>; settings?: Omit<ClaudeDefaults, 'kind'> };
 
-export type RosterAgent = Omit<PersistedAgent, 'teamId' | 'provider' | 'providerSession' | 'providerDefaults'> & { engine: Engine };
+/** What roster.json keeps of the subagents an agent spawned: who they are, not what they did. */
+type StoredSubagents = { rootConversationId: string; nodes: Record<string, SubagentNode> };
+
+export type RosterAgent = Omit<PersistedAgent, 'teamId' | 'provider' | 'providerSession' | 'providerDefaults'> & { engine: Engine; subagents?: StoredSubagents };
 
 /** Provider data this build must retain without interpreting or running it. */
 export type StoredRosterAgent = RosterAgent | { id: string; engine: { kind: string; [key: string]: unknown }; [key: string]: unknown };
@@ -37,9 +40,8 @@ export type RosterData = {
   /** Without their documents, which live in `mission-documents`; a roster written before schema 7 has them inline. */
   missions?: StoredMission[];
   workAssignments: WorkBacklogState['assignments'];
-  /** Only the node list is read by anything; operations and activities are not persisted. */
-  subagents: Record<string, { rootConversationId: string; nodes: Record<string, SubagentNode> }>;
-  accountRateLimits?: AccountRateLimits;
+  /** Each agent keeps its own subagents; a roster written before schema 8 kept them here, by agent. */
+  subagents?: Record<string, StoredSubagents>;
 };
 
 export type SettingsData = {
@@ -133,14 +135,13 @@ export function splitPersistedState(state: FullPersistedState): StoreFiles {
     roster: {
       activeTeamId: state.activeTeamId,
       teams: state.teams.map((team) => teamWithSelection(team, state)),
-      agents: state.agents.map(rosterAgentFrom),
+      agents: state.agents.map(agent => {
+        const tree = state.subagentTrees[agent.id];
+        return { ...rosterAgentFrom(agent), ...(tree ? { subagents: subagentNodes(tree) } : {}) };
+      }),
       automations: state.automations,
       ...(state.missions ? { missions: state.missions } : {}),
       workAssignments: state.workBacklog.assignments,
-      subagents: Object.fromEntries(Object.entries(state.subagentTrees)
-        .filter(([agentId]) => agentIds.has(agentId))
-        .map(([agentId, tree]) => [agentId, subagentNodes(tree)])),
-      ...(state.accountRateLimits ? { accountRateLimits: state.accountRateLimits } : {}),
     },
     settings: {
       settings: sharedSettings,
@@ -181,12 +182,13 @@ export function joinPersistedState(files: StoreFiles): PersistedState {
     automations: roster.automations,
     activeTeamId: roster.activeTeamId,
     activeAgentId: activeTeam?.activeAgentId ?? null,
-    ...(roster.accountRateLimits ? { accountRateLimits: roster.accountRateLimits } : {}),
-    subagentTrees: Object.fromEntries(Object.entries(roster.subagents)
+    subagentTrees: Object.fromEntries(Object.entries({
+      ...roster.subagents,
+      ...Object.fromEntries(roster.agents.flatMap(agent => isRecord(agent.subagents) ? [[agent.id, agent.subagents as StoredSubagents]] : [])),
+    })
       .filter(([agentId]) => !unsupportedIds.has(agentId))
       .map(([agentId, tree]) => [agentId, {
-        rootConversationId: tree.rootConversationId,
-        nodes: tree.nodes,
+        ...subagentNodes(tree),
         operations: {},
         activities: {},
       } satisfies AgentSubagentTree])),
@@ -222,7 +224,6 @@ export function preserveUnsupportedAgents(roster: RosterData, original: RosterDa
   }
   return {
     ...roster, agents, teams,
-    subagents: { ...roster.subagents, ...Object.fromEntries(Object.entries(original.subagents).filter(([id]) => ids.has(id))) },
     workAssignments: { ...roster.workAssignments,
       ...Object.fromEntries(Object.entries(original.workAssignments).filter(([, assignment]) => ids.has(assignment.agentId))) },
   };
@@ -236,8 +237,10 @@ function teamWithSelection(team: Team, state: FullPersistedState): Team {
     : team;
 }
 
-function subagentNodes(tree: AgentSubagentTree): RosterData['subagents'][string] {
-  return { rootConversationId: tree.rootConversationId, nodes: tree.nodes };
+function subagentNodes(tree: { rootConversationId: string; nodes: Record<string, SubagentNode> }): StoredSubagents {
+  // The prompt a subagent was started with is the first message of its own conversation.
+  return { rootConversationId: tree.rootConversationId, nodes: Object.fromEntries(Object.entries(tree.nodes)
+    .map(([id, { prompt: _prompt, ...node }]) => [id, node as SubagentNode])) };
 }
 
 function byPosition(left: VisualizationData, right: VisualizationData): number {
@@ -245,19 +248,21 @@ function byPosition(left: VisualizationData, right: VisualizationData): number {
 }
 
 function rosterAgentFrom(agent: PersistedAgent): RosterAgent {
-  const { teamId: _teamId, provider: _provider, providerSession: _session, providerDefaults: _defaults, plan, planReview, goal, ...kept } = agent;
+  // A handoff only matters while it runs; its note becomes the first prompt of the new conversation.
+  const { teamId: _teamId, provider: _provider, providerSession: _session, providerDefaults: _defaults, handoff: _handoff, plan, planReview, goal, ...kept } = agent;
   return {
     ...kept,
     engine: engineFrom(agent),
-    // Keep the latest review decision and feedback across restarts.
+    // An unfinished plan is kept across restarts.
     ...(plan && plan.status !== 'completed' ? { plan } : {}),
-    ...(planReview ? { planReview } : {}),
+    // A review is kept while it waits for the user or for a revision; once resolved, nothing reads it again.
+    ...(planReview && (planReview.status === 'pending' || planReview.status === 'revise') ? { planReview } : {}),
     ...(goal && goal.status !== 'complete' ? { goal } : {}),
   };
 }
 
 function persistedAgentFrom(agent: RosterAgent, teamId: string | undefined): PersistedAgent {
-  const { engine: stored, ...kept } = agent;
+  const { engine: stored, subagents: _subagents, ...kept } = agent;
   const engine = (stored.session ? { ...stored, session: withConversationId(stored.session) } : stored) as Engine;
   if (engine.kind === 'antigravity' || engine.kind === 'cursor') return {
     ...kept, ...(teamId ? { teamId } : {}), provider: engine.kind,
@@ -310,4 +315,8 @@ function codexDefaultsFrom(settings: Omit<CodexDefaults, 'kind'>): CodexDefaults
 function withoutKind<T extends { kind: string }>(value: T): Omit<T, 'kind'> {
   const { kind: _kind, ...rest } = value;
   return rest;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

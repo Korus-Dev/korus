@@ -1382,7 +1382,6 @@ export class AppBackendServer {
     await step('remote connections', () => this.remoteTeams.activateConnections());
     // Unreachable hosts can take a full SSH timeout, so they recover off the startup path.
     void this.recoverLinkedHosts();
-    await step('handoffs', () => this.agentHandoffs.recover());
     await step('engine connections', () => this.providerConnections?.refresh());
     await step('source folder', () => this.initializeSourceFolderIfNeeded());
     await step('workspaces', () => this.agentWorkspaces.reconcile());

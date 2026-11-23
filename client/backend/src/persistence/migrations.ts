@@ -15,6 +15,8 @@ export const rosterMigrations: readonly Migration[] = [
   { from: 5, to: 6, up: (value: unknown) => migrateDesignWorkspaces(value) },
   // The store moves the documents into the Mission folders when it rewrites the roster; the data itself is unchanged.
   { from: 6, to: 7, up: (value: unknown) => value },
+  // A roster still holding its designs inline is read as it is; the next save moves them to `designs`.
+  { from: 7, to: 8, up: (value: unknown) => value },
 ];
 
 /** Settings, tasks and visualizations share one envelope version. */
