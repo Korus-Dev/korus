@@ -210,4 +210,43 @@ describe('SubagentPanel', () => {
     await vi.advanceTimersByTimeAsync(1_500);
     expect(loadMessages).toHaveBeenCalledTimes(3);
   });
+
+  it('shows Working for an active child whose replay contains only finished tools', async () => {
+    const replay = [{ ...messages[0]!, turnId: 'worker-turn', parts: [
+      { type: 'tool' as const, id: 'read', kind: 'read', title: 'Read README', status: 'completed' as const },
+      { type: 'tool' as const, id: 'search', kind: 'search', title: 'Find tests', status: 'completed' as const },
+    ] }];
+    const wrapper = mount(SubagentPanel, {
+      props: { tree, conversationId: 'thread-scout', loadMessages: vi.fn().mockResolvedValue(replay) },
+    });
+    try {
+      await flushPromises();
+      expect(wrapper.findAll('.chat-work-group__title').map(title => title.text())).toContain('Working');
+      await wrapper.setProps({ tree: { ...tree, nodes: { 'thread-scout': {
+        ...tree.nodes['thread-scout']!, status: 'completed', updatedAt: '2026-06-05T00:00:03.000Z',
+      } } } });
+      await flushPromises();
+      expect(wrapper.findAll('.chat-work-group__title').map(title => title.text())).toContain('Done');
+    } finally { wrapper.unmount(); }
+  });
+
+  it('continues updating the same visible transcript during a long-running child turn', async () => {
+    vi.useFakeTimers();
+    const loadMessages = vi.fn().mockResolvedValue(messages);
+    const wrapper = mount(SubagentPanel, {
+      props: { tree, conversationId: 'thread-scout', loadMessages },
+      global: { stubs: { MessageList: true } },
+    });
+    try {
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(120_000);
+      const laterMessages: RendererMessage[] = [{ ...messages[0]!, id: 'later', parts: [{ type: 'text', text: 'Still reviewing.' }] }];
+      loadMessages.mockResolvedValue(laterMessages);
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(wrapper.getComponent({ name: 'MessageList' }).props('messages')).toStrictEqual(laterMessages);
+    } finally { wrapper.unmount(); }
+    const calls = loadMessages.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(loadMessages).toHaveBeenCalledTimes(calls);
+  });
 });

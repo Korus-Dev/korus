@@ -8,7 +8,7 @@
           class="app-button app-button--secondary agent-ui-interactive"
           data-testid="subagent-conversation-retry"
           type="button"
-          @click="refreshMessages"
+          @click="refreshMessages()"
         >
           {{ t('chat.subagents.retryConversation') }}
         </button>
@@ -16,6 +16,8 @@
       <MessageList
         v-else
         :messages="messages"
+        :busy="childWorking"
+        :active-turn-id="childWorking ? messages.at(-1)?.turnId : undefined"
         :tool-visibility="isAppToolVisible"
         :reset-key="conversationId"
         :actions-disabled="true"
@@ -67,59 +69,56 @@ const messages = ref<RendererMessage[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 let requestId = 0;
-let pollAttempts = 0;
 let pollTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 const pollIntervalMs = 1_500;
-const maxPollAttempts = 80;
 
 const node = computed(() => props.tree.nodes[props.conversationId] ?? null);
+const childWorking = computed(() => node.value?.status === 'pendingInit' || node.value?.status === 'running');
 const refreshKey = computed(() => `${props.conversationId}:${node.value?.updatedAt ?? ''}`);
 
 watch(
   () => [refreshKey.value, props.visible !== false] as const,
   ([, visible]) => {
+    requestId++;
     cancelPoll();
-    pollAttempts = 0;
     if (visible) void refreshMessages();
   },
   { immediate: true },
 );
-onBeforeUnmount(cancelPoll);
+onBeforeUnmount(() => {
+  requestId++;
+  cancelPoll();
+});
 
-async function refreshMessages(): Promise<void> {
+async function refreshMessages(showLoading = true): Promise<void> {
+  cancelPoll();
   const currentRequest = requestId + 1;
   requestId = currentRequest;
-  loading.value = messages.value.length === 0 && pollAttempts === 0;
-  error.value = null;
+  loading.value = showLoading && messages.value.length === 0;
+  if (showLoading) error.value = null;
   try {
     const nextMessages = await props.loadMessages(props.conversationId);
     if (requestId === currentRequest) {
       messages.value = nextMessages;
-      schedulePoll();
+      error.value = null;
     }
   } catch (caught) {
-    if (requestId === currentRequest) {
+    if (requestId === currentRequest && (showLoading || messages.value.length === 0)) {
       error.value = caught instanceof Error ? caught.message : String(caught);
     }
   } finally {
-    if (requestId === currentRequest) loading.value = false;
+    if (requestId === currentRequest) {
+      loading.value = false;
+      schedulePoll();
+    }
   }
 }
 
 function schedulePoll(): void {
-  const current = node.value;
-  if (
-    props.visible === false ||
-    !current ||
-    (current.status !== 'pendingInit' && current.status !== 'running') ||
-    pollAttempts >= maxPollAttempts
-  ) {
-    return;
-  }
-  pollAttempts += 1;
+  if (props.visible === false || !childWorking.value) return;
   pollTimer = globalThis.setTimeout(() => {
     pollTimer = null;
-    void refreshMessages();
+    void refreshMessages(false);
   }, pollIntervalMs);
 }
 
