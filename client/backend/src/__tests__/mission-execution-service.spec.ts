@@ -2240,6 +2240,47 @@ describe('mission execution', () => {
     }
   });
 
+  it('publishes every revision a finished turn records, so the desktop can continue to Review with the revision it holds', async () => {
+    const h = setup(); const lead = h.originalAgents[0]!; const worker = h.originalAgents[1]!; const repositoryPath = lead.folder!;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'implementation'; mission.stageAgentIds.tickets = lead.id;
+      mission.artifacts.tickets = [{ id: 'done', title: 'Done', repositoryPath, done: true }];
+      mission.artifacts.implementation = { changes: 'Shipped', tests: 'Passed' };
+      mission.execution!.runs = [
+        { id: 'tickets', stage: 'tickets', memberId: lead.id, workerId: lead.id, status: 'accepted', skills: [], feedback: '', startedAt: 'before' },
+        { id: 'work', stage: 'implementation', memberId: lead.id, workerId: worker.id, ticketIndex: 0, ticketId: 'done', repositoryPath, status: 'running', skills: [], feedback: '', startedAt: 'before' },
+      ];
+    });
+    // What the desktop holds is the revision of the last snapshot published to it.
+    let deliveredRevision = h.current().revision;
+    h.ports.publish.mockImplementation(async () => { deliveredRevision = h.current().revision; });
+    const delivered = () => deliveredRevision;
+    const published = () => h.ports.publish.mock.calls.length;
+
+    // A later conversation with the lead finds its accepted Tickets run.
+    let before = published();
+    await h.service.agentFinished(lead.id, 'lead-turn', false);
+    expect(published()).toBeGreaterThan(before);
+
+    // A worker finishing while a prompt is queued for it records the turn without completing the run.
+    h.snapshot.queuedPrompts = [{ id: 'queued', agentId: worker.id, text: 'next', createdAt: 'now' }];
+    before = published();
+    await h.service.agentFinished(worker.id, 'worker-turn', false);
+    expect(published()).toBeGreaterThan(before);
+    h.snapshot.queuedPrompts = [];
+
+    // Resuming a stopped lead takes a revision too.
+    await h.store.change(h.current().id, mission => { mission.execution!.stoppedAgentIds = [lead.id]; });
+    await h.service.resumeAgent(lead.id);
+    expect(delivered()).toBe(h.current().revision);
+
+    await h.store.change(h.current().id, mission => { mission.execution!.runs[1]!.status = 'accepted'; });
+    await h.service.agentFinished(worker.id, 'worker-final', false);
+    expect(delivered()).toBe(h.current().revision);
+    await h.service.execute({ id: h.current().id, revision: delivered(), action: 'continueToReview' });
+    expect(h.current().stage).toBe('review');
+  });
+
   it('keeps a Mission going when the workspace agent that started it closes', async () => {
     const h = setup();
     const starter = h.originalAgents[0]!;

@@ -860,6 +860,7 @@ export class MissionExecutionService {
       await this.ports.missions.change(mission.id, current => {
         current.execution!.stoppedAgentIds = current.execution!.stoppedAgentIds!.filter(id => id !== agentId);
       });
+      await this.ports.publish();
       await this.deliverSupervisorUpdates(mission.id);
     }
   }
@@ -940,10 +941,14 @@ export class MissionExecutionService {
     if (turnId) {
       const submitted = this.ports.snapshot.missions?.find(mission => this.postTurnLaunches.get(agentId)?.missionId === mission.id
         || mission.execution?.runs.slice().reverse().find(run => run.workerId === agentId)?.status === 'accepted');
-      if (submitted) await this.ports.missions.change(submitted.id, current => {
-        const run = current.execution!.runs.slice().reverse().find(run => run.workerId === agentId && run.status === 'accepted');
-        if (run) run.completedTurnIds = [...new Set([...(run.completedTurnIds ?? []), turnId])].slice(-64);
-      });
+      if (submitted) {
+        await this.ports.missions.change(submitted.id, current => {
+          const run = current.execution!.runs.slice().reverse().find(run => run.workerId === agentId && run.status === 'accepted');
+          if (run) run.completedTurnIds = [...new Set([...(run.completedTurnIds ?? []), turnId])].slice(-64);
+        });
+        // The change took a revision; a desktop still holding the previous one would see its next command rejected.
+        await this.ports.publish();
+      }
     }
     const postTurnLaunch = this.postTurnLaunches.get(agentId);
     if (postTurnLaunch) {
@@ -955,10 +960,13 @@ export class MissionExecutionService {
     if (!mission) return;
     // Maintenance/compaction is not assignment completion while its work is queued.
     if (this.ports.snapshot.queuedPrompts?.some(prompt => prompt.agentId === agentId)) {
-      if (turnId) await this.ports.missions.change(mission.id, current => {
-        const run = current.execution!.runs.find(run => run.workerId === agentId && run.status === 'running');
-        if (run) run.completedTurnIds = [...(run.completedTurnIds ?? []), turnId].slice(-64);
-      });
+      if (turnId) {
+        await this.ports.missions.change(mission.id, current => {
+          const run = current.execution!.runs.find(run => run.workerId === agentId && run.status === 'running');
+          if (run) run.completedTurnIds = [...(run.completedTurnIds ?? []), turnId].slice(-64);
+        });
+        await this.ports.publish();
+      }
       return;
     }
     let recoveryRunId: string | undefined;
