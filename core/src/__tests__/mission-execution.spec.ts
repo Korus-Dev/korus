@@ -9,7 +9,7 @@ import { missionWorkflow } from '../mission-workflows';
 it('carries the assigned stage, accepted artifacts, workspace, skills and revision feedback into the provider handoff', () => {
   const snapshot = createInitialSnapshot();
   const mission = createMission(snapshot, { outcome: 'Billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
-  mission.execution = { teamId: 'team', memberIds: ['member'], workspaceName: 'billing-work', workspaces: [{ repositoryPath: '/repo', path: '/isolated', branch: 'mission/billing-work', baseSha: 'a'.repeat(40) }], runs: [] };
+  mission.execution = { teamId: 'team', workspaceName: 'billing-work', workspaces: [{ repositoryPath: '/repo', path: '/isolated', branch: 'mission/billing-work', baseSha: 'a'.repeat(40) }], runs: [] };
   mission.artifacts.requirements = { problem: 'Owners pay', acceptance: 'Only owners' };
   for (const stage of ['requirements', 'tickets', 'implementation', 'review'] as const) {
     const run: MissionRun = { id: 'run', stage, memberId: 'member', ticketIndex: 1, status: 'running', skills: [{ name: `mission-${stage}`, path: `/mission/skills/mission-${stage}/SKILL.md` }], feedback: 'Check permissions', startedAt: 'now' };
@@ -109,7 +109,7 @@ it('validates persisted execution records and dependency graphs before admitting
   const snapshot = createInitialSnapshot();
   const mission = createMission(snapshot, { outcome: 'Billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: snapshot.agents[0]!.id });
   const run: MissionRun = { id: 'run', stage: 'requirements', memberId: 'member', workerId: 'worker', status: 'running', skills: [{ name: 'grilling', path: '/skill' }], feedback: '', startedAt: 'now', finishedAt: 'later', summary: 'Ready', error: 'old error', proposal: structuredClone(mission.artifacts), ticketIndex: 0 };
-  mission.execution = { teamId: 'team', memberIds: ['member'], workspaceName: 'billing-work', workspaces: [{ repositoryPath: '/repo', path: '/isolated', branch: 'mission/billing-work', baseSha: 'a'.repeat(40) }], runs: [run] };
+  mission.execution = { teamId: 'team', workspaceName: 'billing-work', workspaces: [{ repositoryPath: '/repo', path: '/isolated', branch: 'mission/billing-work', baseSha: 'a'.repeat(40) }], runs: [run] };
   expect(isMission(mission)).toBe(true);
   expect(isMission({ ...mission, execution: { ...mission.execution!, runs: [{ ...run, ticketRevision: 2 }] } })).toBe(true);
   expect(isMission({ ...mission, execution: { ...mission.execution!, runs: [{ ...run, draftTicketsBaseHash: 'a'.repeat(64) }] } })).toBe(true);

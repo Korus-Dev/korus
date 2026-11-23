@@ -17,6 +17,11 @@ describe('missions', () => {
     expect(mission.outcome).toBe('Add team billing');
     expect(mission.teamId).toBe(snapshot.teams[0]!.id);
     expect(snapshot.agents.map(agent => agent.id)).toStrictEqual(originalAgentIds);
+    expect(mission.execution).toStrictEqual({ teamId: snapshot.teams[0]!.id, workspaces: [], runs: [] });
+    const legacy = structuredClone(mission);
+    legacy.execution = { ...legacy.execution!, memberIds: ['closed-agent'], dispatchPlan: { commandId: 'old', expectedRevision: 0, revision: 1, leadId: 'lead', maxConcurrency: 1, continuationLimit: 0,
+      assignments: [{ ticketId: 'ticket', ticketRevision: 0, memberId: 'closed-agent' }] } } as never;
+    expect(isMission(legacy)).toBe(true);
     const update = (action: UpdateMissionInput['action']) => updateMission(snapshot, { id: mission.id, revision: mission.revision, artifacts, stageAgentIds: {}, action });
     const artifacts = structuredClone(mission.artifacts);
     expect(() => update('advance')).toThrow('required stage');

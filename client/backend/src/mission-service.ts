@@ -12,16 +12,17 @@ export class MissionService {
   private pending: Promise<unknown> = Promise.resolve();
   constructor(private readonly snapshot: AppSnapshot, private readonly persist: (snapshot: AppSnapshot) => Promise<void>) {}
 
-  createHosted(input: Pick<CreateMissionInput, 'outcome' | 'teamId' | 'workflowType'>, catalog: MissionRepository[]): Promise<Mission> {
+  createHosted(input: Pick<CreateMissionInput, 'outcome' | 'teamId' | 'workflowType'>, catalog: MissionRepository[]): Promise<{ mission: Mission; leadId: string }> {
     return this.transaction(candidate => {
       const leadId = createEntityId('agent');
       const provider = resolveAgentProvider(candidate);
       if (!candidate.teams.some(team => team.id === input.teamId)) throw new Error('The Mission workspace is unavailable on this host.');
       createAgentInSnapshot(candidate, { name: `Mission lead · ${input.outcome}`, folder: '', teamId: input.teamId, selection: { provider } }, undefined, leadId, { select: false });
       const mission = createMission(candidate, { ...input, orchestratorMemberId: leadId });
-      mission.execution!.memberIds = [leadId];
       mission.execution!.repositoryCatalog = catalog;
-      return mission;
+      // Bound in the creating write, so a restart before the first run keeps this lead.
+      mission.stageAgentIds.requirements = leadId;
+      return { mission, leadId };
     }, true);
   }
 

@@ -73,7 +73,6 @@ describe('AppShell missions', () => {
       const mission = snapshot.missions![0]!;
       const lead = { ...snapshot.agents[0]!, id: 'remote-lead', remoteConnectionId: 'devbox' };
       snapshot.agents.push(lead);
-      mission.execution!.memberIds = [lead.id];
       Object.assign(mission.execution!.runs[0]!, { workerId: lead.id, status: 'running' });
       await wrapper.setProps({ snapshot: { ...snapshot } });
       await flushPromises();
@@ -847,7 +846,6 @@ describe('AppShell missions', () => {
     mission.execution = {
       teamId: snapshot.teams[0]!.id,
       repoPath: snapshot.agents[0]!.folder!,
-      memberIds: snapshot.agents.map(agent => agent.id),
       runs: [{
         id: 'run-requirements', stage: 'requirements', memberId: snapshot.agents[0]!.id,
         workerId: snapshot.agents[1]!.id, status: 'running', skills: [], feedback: '', startedAt: '2026-09-19T00:00:00.000Z',
@@ -880,7 +878,6 @@ describe('AppShell missions', () => {
     mission.execution = {
       teamId: mission.teamId,
       debugFixture: true,
-      memberIds: [apiAgent.id, webAgent.id],
       workspaces: [
         { repositoryPath: '/repo/api', path: '/mission/api', branch: 'mission/debug' },
         { repositoryPath: '/repo/web', path: '/mission/web', branch: 'mission/debug' },

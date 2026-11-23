@@ -28,7 +28,7 @@ describe('MissionService', () => {
     }];
     const mission = createMission(snapshot, { outcome: 'Billing', workflowType: 'shapeAndShipFeature', teamId: 'team-1', orchestratorMemberId: 'worker-1' });
     mission.execution = {
-      teamId: 'team-1', repoPath: '/repo', memberIds: [],
+      teamId: 'team-1', repoPath: '/repo',
       runs: [{
         id: 'run-1', stage: 'requirements', memberId: 'member-1', workerId: 'worker-1',
         status: 'running', skills: [], feedback: '', startedAt: '2026-09-19T00:00:00.000Z',

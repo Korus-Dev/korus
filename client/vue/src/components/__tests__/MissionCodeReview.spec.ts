@@ -99,7 +99,6 @@ it('switches repository-scoped diffs and Open In targets from the Mission Change
   }];
   mission.execution = {
     teamId: mission.teamId,
-    memberIds: agents.map(agent => agent.id),
     workspaces: [
       { repositoryPath: '/repo/api', path: '/mission/api', branch: 'mission/review', baseSha: 'a'.repeat(40) },
       { repositoryPath: '/repo/web', path: '/mission/web', branch: 'mission/review', baseSha: 'b'.repeat(40) },

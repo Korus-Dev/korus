@@ -80,7 +80,7 @@ it.each([
         if (run.stage === 'tickets') {
           expect(current().execution!.runs.filter(candidate => candidate.stage === 'implementation')).toHaveLength(0);
           await service.schedule(run.workerId!, { commandId: 'approved-implementation', expectedRevision: 0,
-            assignments: current().artifacts.tickets.map(ticket => ({ ticketId: ticket.id!, ticketRevision: ticket.revision ?? 0, memberId: current().execution!.memberIds[0]! })),
+            assignments: current().artifacts.tickets.map(ticket => ({ ticketId: ticket.id!, ticketRevision: ticket.revision ?? 0 })),
             maxConcurrency: parallel ? 2 : 1, continuationLimit: 2 });
         }
       }

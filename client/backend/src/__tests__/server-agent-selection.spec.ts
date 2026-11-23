@@ -96,7 +96,7 @@ describe('AppBackendServer', () => {
     const mission = createMission(snapshot, { outcome: 'Large mission', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: 'agent-dina' });
     const proposal = structuredClone(mission.artifacts);
     proposal.requirements = { problem: 'x'.repeat(6_000_000), acceptance: 'Preserve the transcript' };
-    mission.execution = { teamId: snapshot.teams[0]!.id, repoPath: '/repo', memberIds: ['agent-dina'], runs: [{ id: 'retained-run', stage: 'requirements', memberId: 'agent-dina', workerId: 'agent-dina', status: 'awaitingReview', skills: [], feedback: '', startedAt: '', proposal }] };
+    mission.execution = { teamId: snapshot.teams[0]!.id, repoPath: '/repo', runs: [{ id: 'retained-run', stage: 'requirements', memberId: 'agent-dina', workerId: 'agent-dina', status: 'awaitingReview', skills: [], feedback: '', startedAt: '', proposal }] };
     const compact = await server.handleMessage({ jsonrpc: '2.0', id: 'compact', method: 'agent/conversation/load', params: { agentId: 'agent-dina', omitSnapshot: true } });
     expect(compact).toEqual({ jsonrpc: '2.0', id: 'compact', result: null });
     expect(loads()).toHaveLength(2);

@@ -209,7 +209,11 @@ describe(`${product.name} MCP tool registration`, () => {
     const plan = { commandId: 'decision-1', expectedRevision: 0, assignments: [], maxConcurrency: 1, continuationLimit: 0 };
     const scheduleDefinition = mocks.registerTool.mock.calls.find(([name]) => name === 'set-mission-schedule')![1] as { inputSchema: z.ZodRawShape };
     expect(z.object(scheduleDefinition.inputSchema).safeParse({ ...plan, maxConcurrency: 21 }).success).toBe(false);
-    expect(z.object(scheduleDefinition.inputSchema).safeParse({ ...plan, assignments: Array.from({ length: 201 }, (_, index) => ({ ticketId: `mission-ticket-${index}`, ticketRevision: 0, memberId: 'worker' })) }).success).toBe(false);
+    expect(z.object(scheduleDefinition.inputSchema).safeParse({ ...plan, assignments: Array.from({ length: 201 }, (_, index) => ({ ticketId: `mission-ticket-${index}`, ticketRevision: 0 })) }).success).toBe(false);
+    // Workers are the daemon's to choose: the schedule names tickets, never agents.
+    expect(Object.keys((scheduleDefinition.inputSchema.assignments as z.ZodArray<z.ZodObject<z.ZodRawShape>>).element.shape)).not.toContain('memberId');
+    const legacy = z.object(scheduleDefinition.inputSchema).parse({ ...plan, assignments: [{ ticketId: 'mission-ticket-1', ticketRevision: 0, memberId: 'worker' }] });
+    expect(legacy.assignments).toStrictEqual([{ ticketId: 'mission-ticket-1', ticketRevision: 0 }]);
     coordinator.setMissionSchedule.mockResolvedValue({ revision: 1 });
     await handlers.get('set-mission-schedule')!(plan);
     expect(coordinator.setMissionSchedule).toHaveBeenCalledWith('agent-dina', plan);

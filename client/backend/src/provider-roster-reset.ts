@@ -60,7 +60,6 @@ export function resetProviderRoster(snapshot: AppSnapshot, ids: string[]): () =>
   for (const mission of snapshot.missions ?? []) {
     mission.stageAgentIds = Object.fromEntries(Object.entries(mission.stageAgentIds).filter(([, id]) => !removed.has(id)));
     if (!mission.execution) continue;
-    mission.execution.memberIds = mission.execution.memberIds.filter(id => !removed.has(id));
     mission.execution.runs = mission.execution.runs.filter(run => !removed.has(run.memberId) && !removed.has(run.workerId ?? ''));
     mission.execution.deliveries = mission.execution.deliveries?.filter(delivery => !removed.has(delivery.agentId));
   }
@@ -100,7 +99,6 @@ export function resetProviderRoster(snapshot: AppSnapshot, ids: string[]): () =>
       if (!previous) continue;
       Object.assign(mission.stageAgentIds, Object.fromEntries(Object.entries(previous.stageAgentIds).filter(([, id]) => removed.has(id))));
       if (!mission.execution || !previous.execution) continue;
-      mission.execution.memberIds = restoreRemovedItems(mission.execution.memberIds, previous.execution.memberIds, id => id, id => removed.has(id));
       mission.execution.runs = restoreRemovedItems(mission.execution.runs, previous.execution.runs, run => run.id, run => removed.has(run.memberId) || removed.has(run.workerId ?? ''));
       mission.execution.deliveries = restoreRemovedItems(mission.execution.deliveries ?? [], previous.execution.deliveries ?? [], delivery => `${delivery.agentId}:${delivery.repositoryPath}`, delivery => removed.has(delivery.agentId));
     }

@@ -113,7 +113,6 @@ describe('AppShellNavigation', () => {
     mission.execution = {
       teamId: snapshot.teams[0]!.id,
       repoPath: snapshot.agents[0]!.folder!,
-      memberIds: snapshot.agents.map(agent => agent.id),
       runs: [{
         id: 'mission-run', stage: 'requirements', memberId: snapshot.agents[0]!.id,
         workerId: snapshot.agents[1]!.id, status: 'running', skills: [], feedback: '',

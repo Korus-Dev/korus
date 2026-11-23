@@ -11,9 +11,9 @@ export function applyMissionDebugFixture(snapshot: AppSnapshot, missionId: strin
     ...(mission.execution?.runs.flatMap(run => run.workerId ? [run.workerId] : []) ?? []),
     ...Object.values(mission.stageAgentIds),
   ];
-  const memberIds = [...new Set(mission.execution?.memberIds?.length ? mission.execution.memberIds : (team?.agentIds ?? []))];
-  const members = uniqueAgents(snapshot, memberIds);
-  const workers = uniqueAgents(snapshot, missionWorkerIds.length ? missionWorkerIds : memberIds);
+  const teamAgentIds = [...new Set(team?.agentIds ?? [])];
+  const members = uniqueAgents(snapshot, teamAgentIds);
+  const workers = uniqueAgents(snapshot, missionWorkerIds.length ? missionWorkerIds : teamAgentIds);
   if (!members.length || !workers.length) throw new Error('Add an agent to the Mission workspace before loading a debug fixture.');
   const repositories = [...new Set(members.flatMap(repositoryPath))].slice(0, 2);
   if (!repositories.length) repositories.push(`/debug/${mission.id}/repository`);
@@ -131,7 +131,6 @@ export function applyMissionDebugFixture(snapshot: AppSnapshot, missionId: strin
   mission.execution = {
     teamId: mission.teamId,
     debugFixture: true,
-    memberIds,
     workspaceName: `debug-${slug(mission.outcome)}`,
     workspaces,
     runs,

@@ -107,7 +107,7 @@ describe('mission backend boundary', () => {
       online = false;
       const ticket = current().artifacts.tickets[0]!;
       await host.setMissionSchedule(lead, { commandId: 'offline-dispatch', expectedRevision: 0, maxConcurrency: 1, continuationLimit: 0,
-        assignments: [{ ticketId: ticket.id!, ticketRevision: ticket.revision ?? 0, memberId: lead }] });
+        assignments: [{ ticketId: ticket.id!, ticketRevision: ticket.revision ?? 0 }] });
       await vi.waitFor(() => expect(current().execution!.runs.at(-1)).toMatchObject({ stage: 'implementation', status: 'running' }));
       const worker = current().execution!.runs.at(-1)!.workerId!;
       const worktree = current().execution!.workspaces![0]!;
@@ -756,7 +756,6 @@ it('recovers a persisted preparing mission without starting its provider convers
     mission.execution = {
       teamId: snapshot.teams[0]!.id,
       repoPath: repo,
-      memberIds: ['agent-dina'],
       runs: [{
         id: 'mission-run-recovery',
         stage: 'requirements',

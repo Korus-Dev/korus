@@ -888,8 +888,9 @@ publishes only after saving.
   with dependency-ready tickets executed within the Mission lead’s persisted dispatch
   plan. Available workers from
   accepted tickets can be reused after their provider turn finishes. In one worker
-  per repository mode, the lead keeps the same member assignment across the
-  repository’s tickets to retain its worker conversation. Shared files and Git
+  per repository mode, the daemon gives a repository's later tickets to its existing
+  worker, keeping its conversation, unless that worker runs on another engine than
+  the approved implementation model. Shared files and Git
   state are a disclosed risk: workers stop for user guidance on conflicts and
   commit only their own changes, using selected lines for mixed files. Other
   workers' uncommitted changes do not prevent ticket submission. Each worktree
@@ -914,11 +915,14 @@ publishes only after saving.
   Mission prompts and fences late completions and restart recovery. Stopping the lead
   holds supervisor updates until the user resumes that agent.
   The Mission lead owns assignment, sequencing, priorities and adaptations. Identity-bound
-  scheduling tools persist an ordered list of approved ticket revisions and selected members,
+  scheduling tools persist an ordered list of approved ticket revisions,
   a global concurrency limit and a bounded continuation budget. Empty assignments pause
   future dispatch; existing reserved runs retain their authorization. The daemon atomically
   validates decisions, enforces ticket dependencies and the user's per-repository concurrency
-  choice, reserves runs and launches workers. It never invents assignments outside that plan.
+  choice, reserves runs and launches workers. Workers are Mission agents started from the
+  lead, never the workspace's own agents, so closing a workspace agent never blocks a
+  Mission. It never
+  invents assignments outside that plan.
   The backlog has no ticket-count cap; dispatch batch size and concurrency are
   bounded independently of the total number of tickets.
   Worker completion saves evidence and sends the lead a durable message. Instructions

@@ -165,7 +165,6 @@ describe('provider onboarding setup', () => {
     expect(snapshot.general.savedPromptDrafts).toEqual([]);
     expect(snapshot.clientPreferences?.desktop).toMatchObject({ activeAgentId: 'other', activeAgentByTeam: {}, agentOrderByTeam: { 'team-test': ['other'] } });
     expect(mission.stageAgentIds).toEqual({});
-    expect(mission.execution!.memberIds).toEqual(['other']);
     expect(mission.execution!.runs).toEqual([]);
     expect(mission.execution!.deliveries).toEqual([]);
     expect(snapshot.automations[0]!.executionLog).toEqual([]);

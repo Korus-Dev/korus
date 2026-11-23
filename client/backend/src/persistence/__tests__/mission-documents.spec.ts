@@ -42,7 +42,7 @@ const storedMissions = async () => (await readJson('roster.json')).data.missions
 const documentsFile = async (index = 0) => ['mission-documents', `${(await storedMissions())[index]!.documents}.json`];
 
 const run = (mission: Mission, id: string, stage: MissionRun['stage'], status: MissionRun['status'], extra: Partial<MissionRun> = {}): MissionRun => ({
-  id, stage, memberId: mission.execution!.memberIds[0]!, status, skills: [], feedback: '', startedAt: '2026-11-01T00:00:00.000Z', ...extra });
+  id, stage, memberId: 'mission-lead', status, skills: [], feedback: '', startedAt: '2026-11-01T00:00:00.000Z', ...extra });
 
 /** A Mission with documents, a finished run that kept a copy of them, a cancelled ticket draft and a run awaiting review. */
 function snapshotWithMission(id?: string): { snapshot: AppSnapshot; mission: Mission } {

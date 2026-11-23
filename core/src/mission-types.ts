@@ -90,7 +90,7 @@ export type MissionImplementationMode = 'lead' | 'perRepository' | 'multiplePerR
 export type MissionDispatchInput = {
   commandId: string;
   expectedRevision: number;
-  assignments: { ticketId: string; ticketRevision: number; memberId: string; retryFailedRunId?: string }[];
+  assignments: { ticketId: string; ticketRevision: number; retryFailedRunId?: string }[];
   maxConcurrency: number;
   continuationLimit: number;
 };
@@ -107,7 +107,6 @@ export type MissionExecution = {
   implementationMode?: MissionImplementationMode;
   dispatchPlan?: MissionDispatchPlan;
   repoPath?: string;
-  memberIds: string[];
   workspace?: { path: string; branch: string; baseSha?: string; deleted?: true };
   workspaceName?: string;
   workspaces?: MissionWorkspace[];
@@ -152,7 +151,6 @@ export type UpdateMissionInput = {
   action: 'save' | 'advance';
 };
 export type MissionExecutionInput = { id: string; revision: number } & (
-  | { action: 'configure'; teamId: string; memberIds: string[] }
   | { action: 'attachRepository'; repoPath: string }
   | { action: 'run'; memberId?: string; ticketIndex?: number; feedback?: string }
   | { action: 'accept'; runId: string; implementationModel?: ExecutionSelection; parallelImplementation?: boolean; implementationMode?: MissionImplementationMode }

@@ -17,7 +17,6 @@ describe('MissionReviewChanges', () => {
     mission.stage = 'review';
     mission.execution = {
       teamId: mission.teamId,
-      memberIds: [agent.id],
       workspaces: [
         { repositoryPath: '/repo/api', path: '/mission/api', branch: 'mission/review' },
         { repositoryPath: '/repo/web', path: '/mission/web', branch: 'mission/review' },
@@ -61,7 +60,7 @@ describe('MissionReviewChanges', () => {
     const agent = snapshot.agents[0]!;
     const mission = createMission(snapshot, { outcome: 'Review', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: agent.id });
     mission.stage = 'review';
-    mission.execution = { teamId: mission.teamId, memberIds: [agent.id], workspaces: [{ repositoryPath: '/repo/api', path: '/mission/api', branch: 'mission/review' }],
+    mission.execution = { teamId: mission.teamId, workspaces: [{ repositoryPath: '/repo/api', path: '/mission/api', branch: 'mission/review' }],
       runs: [{ id: 'run-api', stage: 'implementation', memberId: agent.id, workerId: agent.id, repositoryPath: '/repo/api', status: 'accepted', skills: [], feedback: '', startedAt: 'now' }] };
     const file = (path: string) => [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, '@@ -0,0 +1 @@', '+line'].join('\n');
     const getDiff = vi.fn().mockResolvedValue({ diff: [file('README.md'), file('src/app.test.ts'), file('src/app.ts')].join('\n'), summary: { addedLines: 3, removedLines: 0, changedFiles: 3 }, sections: [], target: { type: 'branch' } });

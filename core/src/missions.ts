@@ -114,7 +114,7 @@ export function createMission(snapshot: AppSnapshot, input: unknown): Mission {
     artifacts: workflow.createArtifacts(),
     artifactFiles: {},
     stageAgentIds: {},
-    execution: { teamId: team.id, memberIds: [...team.agentIds], workspaces: [], runs: [] },
+    execution: { teamId: team.id, workspaces: [], runs: [] },
   };
   (snapshot.missions ??= []).push(mission);
   return mission;
@@ -167,12 +167,12 @@ function isMissionDispatchPlan(v: unknown): boolean {
     && Number.isInteger(v.maxConcurrency) && (v.maxConcurrency as number) >= 1 && (v.maxConcurrency as number) <= 20
     && Number.isInteger(v.continuationLimit) && (v.continuationLimit as number) >= 0 && (v.continuationLimit as number) <= 2
     && Array.isArray(v.assignments) && v.assignments.length <= 200 && v.assignments.every(assignment => record(assignment)
-      && text(assignment.ticketId) && text(assignment.memberId) && (assignment.retryFailedRunId === undefined || text(assignment.retryFailedRunId)) && Number.isInteger(assignment.ticketRevision) && (assignment.ticketRevision as number) >= 0)
+      && text(assignment.ticketId) && (assignment.retryFailedRunId === undefined || text(assignment.retryFailedRunId)) && Number.isInteger(assignment.ticketRevision) && (assignment.ticketRevision as number) >= 0)
     && new Set(v.assignments.map(assignment => (assignment as { ticketId: string }).ticketId)).size === v.assignments.length;
 }
 
 function isMissionExecution(v: unknown): v is MissionExecution {
-  return record(v) && text(v.teamId) && (v.repoPath === undefined || text(v.repoPath)) && Array.isArray(v.memberIds) && v.memberIds.every(text)
+  return record(v) && text(v.teamId) && (v.repoPath === undefined || text(v.repoPath))
     && (v.repositoryCatalog === undefined || isMissionRepositoryCatalog(v.repositoryCatalog))
     && (v.debugFixture === undefined || v.debugFixture === true)
     && (v.stoppedAgentIds === undefined || (Array.isArray(v.stoppedAgentIds) && v.stoppedAgentIds.every(text)))

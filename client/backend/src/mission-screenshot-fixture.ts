@@ -71,7 +71,7 @@ export function applyMissionScreenshotFixture(snapshot: AppSnapshot, missionId: 
   mission.stageAgentIds = { requirements: lead.id, tickets: lead.id, implementation: api.id };
   mission.artifactFiles = {};
   mission.execution = {
-    teamId: team.id, debugFixture: true, memberIds: [api.id, web.id], workspaceName: 'team-invitations',
+    teamId: team.id, debugFixture: true, workspaceName: 'team-invitations',
     workspaces: repositories.map(repositoryPath => ({ repositoryPath, path: repositoryPath, branch })),
     runs: [run('requirements', 'requirements', lead, 'accepted', 24), run('tickets', 'tickets', lead, 'accepted', 21), tokens, email, ui],
   };

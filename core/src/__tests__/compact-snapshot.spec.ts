@@ -32,7 +32,7 @@ describe('compactClientSnapshot', () => {
 
   it('leaves the snapshot it was given untouched and shares everything it did not change', () => {
     const { snapshot, mission } = missionSnapshot();
-    const other = createMission(snapshot, { outcome: 'Untouched', workflowType: 'shapeAndShipFeature', teamId: mission.teamId, orchestratorMemberId: mission.execution!.memberIds[0]! });
+    const other = createMission(snapshot, { outcome: 'Untouched', workflowType: 'shapeAndShipFeature', teamId: mission.teamId, orchestratorMemberId: snapshot.agents[0]!.id });
     const before = structuredClone(snapshot);
 
     const compact = compactClientSnapshot(snapshot);

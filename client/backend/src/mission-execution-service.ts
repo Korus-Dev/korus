@@ -5,7 +5,7 @@ import type { Agent, AppSnapshot, ProviderModelOption, CreateSourceWorktreeInput
 import { createAgentInSnapshot } from '@workspace/core/agent-manager';
 import { resolveAgentProvider } from '@workspace/core/agent-providers';
 import { createEntityId } from '@workspace/core/ids';
-import { isAbsolute, relative, sep } from 'node:path';
+import { basename, isAbsolute, relative, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 import { isMissionArtifacts, missionTicketReady, type Mission, type MissionArtifacts, type MissionReviewFinding, type MissionStage } from '@workspace/core/missions';
 import { missionWorkflow } from '@workspace/core/mission-workflows';
@@ -90,7 +90,7 @@ export class MissionExecutionService {
       for (const assignment of input.assignments) {
         const ticket = current.artifacts.tickets.find(ticket => ticket.id === assignment.ticketId);
         if (!ticket || !ticket.repositoryPath || (ticket.revision ?? 0) !== assignment.ticketRevision
-          || ids.has(assignment.ticketId) || !this.availableMember(current, assignment.memberId)) throw new Error('Invalid or stale ticket assignment.');
+          || ids.has(assignment.ticketId)) throw new Error('Invalid or stale ticket assignment.');
         if (assignment.retryFailedRunId !== undefined && !current.execution!.runs.some(run => run.id === assignment.retryFailedRunId && run.status === 'failed' && !this.isStopped(current, run.workerId) && run.ticketId === assignment.ticketId && missionRunTicketIndex(current, run) !== undefined)) throw new Error('Only a current failed assignment without user Stop can be retried.');
         ids.add(assignment.ticketId);
       }
@@ -107,13 +107,9 @@ export class MissionExecutionService {
     const mission = this.ports.snapshot.missions?.find(candidate => missionLeadAgentId(candidate) === agentId);
     if (!mission) throw new Error('Only the Mission lead can read scheduling state.');
     return { missionId: mission.id, stage: mission.stage, revision: mission.execution?.dispatchPlan?.revision ?? 0,
-      plan: mission.execution?.dispatchPlan, memberIds: mission.execution?.memberIds,
+      plan: mission.execution?.dispatchPlan,
       parallelImplementation: mission.execution?.parallelImplementation ?? false,
       implementationMode: mission.execution?.implementationMode ?? (mission.execution?.parallelImplementation ? 'multiplePerRepository' : 'perRepository'),
-      members: mission.execution?.memberIds.flatMap(id => {
-        const agent = this.agent(id);
-        return agent ? [{ id, name: agent.name, available: this.availableMember(mission, id) }] : [];
-      }),
       tickets: mission.artifacts.tickets.map((ticket, index) => {
         const run = mission.execution?.runs.slice().reverse().find(run => missionRunTicketIndex(mission, run) === index);
         return { ...ticket, status: ticket.done ? 'accepted' : run?.status ?? (missionTicketReady(mission.artifacts.tickets, index) ? 'ready' : 'blocked'),
@@ -126,17 +122,6 @@ export class MissionExecutionService {
     if (!input || typeof input.id !== 'string' || !Number.isInteger(input.revision)) throw new Error('Invalid mission command.');
     const mission = this.requireMission(input.id);
     if (mission.revision !== input.revision) throw new Error('This mission changed. Reload before continuing.');
-    if (input.action === 'configure') {
-      const team = this.ports.snapshot.teams.find(team => team.id === input.teamId && team.id === mission.teamId);
-      if (!team || !Array.isArray(input.memberIds) || !input.memberIds.length || input.memberIds.length > 20
-        || input.memberIds.some(id => !this.ports.snapshot.agents.some(agent => agent.id === id && agent.teamId === team.id && !agent.remoteConnectionId))) throw new Error('Choose a local workspace and at least one of its agents.');
-      await this.change(input, current => {
-        if (current.execution?.runs.some(run => ['preparing', 'running'].includes(run.status))) throw new Error('Wait for active Mission runs to finish before reassigning members.');
-        if (current.execution) current.execution.memberIds = [...new Set(input.memberIds)];
-        else current.execution = { teamId: team.id, memberIds: [...new Set(input.memberIds)], workspaces: [], runs: [] };
-      });
-      return;
-    }
     if (input.action === 'attachRepository') {
       if (typeof input.repoPath !== 'string' || !input.repoPath.trim()) throw new Error('Choose a repository.');
       const repoPath = input.repoPath.trim();
@@ -424,7 +409,6 @@ export class MissionExecutionService {
             const previousPlan = current.execution!.dispatchPlan;
             if (previousPlan) current.execution!.dispatchPlan = { ...previousPlan, commandId: `approval-${run.id}`,
               expectedRevision: previousPlan.revision, revision: previousPlan.revision + 1, assignments: [] };
-            this.requireAvailableMembers(current);
             const catalog = current.execution!.repositoryCatalog;
             if (catalog) {
               if (current.artifacts.tickets.some(ticket => !catalog.some(repo => repo.key === ticket.repositoryPath))) {
@@ -1020,8 +1004,6 @@ export class MissionExecutionService {
         && !this.isStopped(current, run.workerId)
         && current.execution?.runs.some(candidate => candidate.id === runId && ['preparing', 'running'].includes(candidate.status)));
     };
-    const member = this.agent(run.memberId);
-    if (!member) throw new Error('Assigned workspace member was removed.');
     const implementationModel = run.stage === 'implementation' && !missionImplementationUsesLead(mission) && mission.execution?.implementationModel
       ? await this.validateImplementationModel(mission, mission.execution.implementationModel) : undefined;
     const missionHome = await this.ports.ensureMissionHome(mission.id);
@@ -1045,13 +1027,14 @@ export class MissionExecutionService {
       const leadRun = mission.execution!.runs.slice().reverse().find(candidate => (
         (candidate.stage === 'requirements' || candidate.stage === 'tickets') && candidate.workerId
       ));
-      const lead = leadRun ? this.agent(leadRun.workerId) : member;
+      // The first lead starts from the workspace agent the user picked; everyone else from the lead.
+      const lead = leadRun ? this.agent(leadRun.workerId) : this.agent(run.memberId);
       if (!lead) throw new Error('The main Mission agent is unavailable.');
       const workerId = createEntityId('agent');
       const name = run.stage === 'implementation'
-        ? `${member.name || 'Agent'} · ${mission.outcome} · ${run.stage}`
+        ? `${basename(repositoryPath ?? '') || 'Worker'} · ${mission.outcome} · ${run.stage}`
         : `Mission lead · ${mission.outcome}`;
-      createAgentInSnapshot(this.ports.snapshot, { name, teamId: mission.execution!.teamId, folder: workingFolder, ...(implementationModel && implementationModel.provider !== lead.provider ? {} : { providerDefaults: structuredClone(lead.providerDefaults) }), avatar: member.avatar, selection: { provider: implementationModel?.provider ?? lead.provider } }, undefined, workerId, { select: false });
+      createAgentInSnapshot(this.ports.snapshot, { name, teamId: mission.execution!.teamId, folder: workingFolder, ...(implementationModel && implementationModel.provider !== lead.provider ? {} : { providerDefaults: structuredClone(lead.providerDefaults) }), avatar: lead.avatar, selection: { provider: implementationModel?.provider ?? lead.provider } }, undefined, workerId, { select: false });
       worker = this.agent(workerId)!;
       await this.ports.missions.change(id, current => {
         current.execution!.runs.find(run => run.id === runId)!.workerId = worker!.id;
@@ -1105,7 +1088,7 @@ export class MissionExecutionService {
 
   private async validateImplementationModel(mission: Mission, selection: ExecutionSelection): Promise<ExecutionSelection> {
     const leadRun = mission.execution!.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && run.workerId);
-    const lead = this.agent(leadRun?.workerId ?? mission.execution!.memberIds[0]);
+    const lead = this.agent(leadRun?.workerId ?? missionLeadAgentId(mission) ?? this.leadTemplate(mission));
     if (!lead || !selection) throw new Error('Choose an implementation model.');
     const provider = resolveAgentProvider(this.ports.snapshot, selection.provider);
     if (typeof selection.model !== 'string' || !selection.model.trim()) throw new Error('Choose an implementation model.');
@@ -1130,14 +1113,19 @@ export class MissionExecutionService {
   }
   private availableMember(mission: Mission, id: string | undefined): boolean {
     const member = this.agent(id);
-    return !!member && !member.remoteConnectionId && member.teamId === mission.execution!.teamId
-      && mission.execution!.memberIds.includes(member.id);
+    return !!member && !member.remoteConnectionId && member.teamId === mission.execution!.teamId;
   }
 
-  private requireAvailableMembers(mission: Mission): void {
-    if (!mission.execution?.memberIds.length || mission.execution.memberIds.some(id => !this.availableMember(mission, id))) {
-      throw new Error('A Mission member is unavailable. Reassign Mission members before continuing.');
-    }
+  /** A worker keeps its conversation, so it can take a ticket only if it already runs on the approved model's engine. */
+  private runsImplementationModel(mission: Mission, workerId: string): boolean {
+    const model = mission.execution!.implementationModel;
+    return !model || this.agent(workerId)?.provider === resolveAgentProvider(this.ports.snapshot, model.provider);
+  }
+
+  /** The workspace agent a lead starts from: the one picked for earlier lead runs, else the workspace's first local agent. */
+  private leadTemplate(mission: Mission): string | undefined {
+    const picked = mission.execution!.runs.slice().reverse().find(run => (run.stage === 'requirements' || run.stage === 'tickets') && this.availableMember(mission, run.memberId));
+    return picked?.memberId ?? this.ports.snapshot.teams.find(team => team.id === mission.execution!.teamId)?.agentIds.find(id => this.availableMember(mission, id));
   }
 
   private enqueueRuns(mission: Mission, input: { memberId?: string; ticketIndex?: number; feedback?: string }): string[] {
@@ -1176,9 +1164,7 @@ export class MissionExecutionService {
         this.stoppedAgents.delete(leadId);
         execution.stoppedAgentIds = execution.stoppedAgentIds?.filter(id => id !== leadId);
       }
-      const memberId = plan.assignments.find(assignment => assignment.ticketId === ticket.id)!.memberId;
-      if (!this.availableMember(mission, memberId)) continue;
-      const runId = this.enqueueImplementationRun(mission, ticketIndex, repositoryPath, { ...input, memberId });
+      const runId = this.enqueueImplementationRun(mission, ticketIndex, repositoryPath, { ...input, memberId: plan.leadId });
       runIds.push(runId);
       busyRepositories.add(repositoryPath);
     }
@@ -1194,8 +1180,10 @@ export class MissionExecutionService {
       this.stoppedAgents.delete(previousOrchestratorRun.workerId);
       if (execution.stoppedAgentIds) execution.stoppedAgentIds = execution.stoppedAgentIds.filter(id => id !== previousOrchestratorRun.workerId);
     }
-    const memberId = input.memberId ?? (this.availableMember(mission, previousOrchestratorRun?.memberId) ? previousOrchestratorRun!.memberId : execution.memberIds[0]!);
-    if (!memberId || !this.availableMember(mission, memberId)) throw new Error('The selected workspace member is unavailable.');
+    if (input.memberId !== undefined && !this.availableMember(mission, input.memberId)) throw new Error('The selected workspace member is unavailable.');
+    // Once the lead exists it carries on even if the workspace agent it started from has closed.
+    const memberId = input.memberId ?? previousOrchestratorRun?.memberId ?? missionLeadAgentId(mission) ?? this.leadTemplate(mission);
+    if (!memberId) throw new Error('The selected workspace member is unavailable.');
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
     const runId = createEntityId('mission-run');
     const previousDraft = execution.runs.slice().reverse().find(run => run.stage === 'tickets' && run.draftTickets);
@@ -1225,7 +1213,7 @@ export class MissionExecutionService {
     mission: Mission,
     ticketIndex: number,
     repositoryPath: string,
-    input: { memberId?: string; feedback?: string },
+    input: { memberId: string; feedback?: string },
   ): string {
     const execution = mission.execution!;
     const repositoryWorker = execution.runs.slice().reverse().find(run => (
@@ -1239,7 +1227,6 @@ export class MissionExecutionService {
       ))
       : repositoryWorker;
     const memberId = input.memberId;
-    if (!memberId || !this.availableMember(mission, memberId)) throw new Error('The selected workspace member is unavailable.');
     if (input.feedback !== undefined && (typeof input.feedback !== 'string' || input.feedback.length > 20_000)) throw new Error('Invalid revision feedback.');
     const runId = createEntityId('mission-run');
     execution.runs.push({
@@ -1248,7 +1235,7 @@ export class MissionExecutionService {
       memberId,
       // Reserve an available repository worker; dispatch waits for its provider turn.
       ...(missionImplementationUsesLead(mission) ? { workerId: missionLeadAgentId(mission) } : {}),
-      ...(!missionImplementationUsesLead(mission) && !(mission.artifacts.tickets[ticketIndex]!.revision ?? 0) && reusableWorker?.workerId && (reusableWorker.memberId === memberId || (reusableWorker.workerId === memberId && !this.availableMember(mission, reusableWorker.memberId))) ? { workerId: reusableWorker.workerId } : {}),
+      ...(!missionImplementationUsesLead(mission) && !(mission.artifacts.tickets[ticketIndex]!.revision ?? 0) && reusableWorker?.workerId && this.runsImplementationModel(mission, reusableWorker.workerId) ? { workerId: reusableWorker.workerId } : {}),
       ticketIndex,
       ticketId: (mission.artifacts.tickets[ticketIndex]!.id ??= createEntityId('mission-ticket')),
       ...(mission.artifacts.tickets[ticketIndex]!.revision !== undefined ? { ticketRevision: mission.artifacts.tickets[ticketIndex]!.revision } : {}),

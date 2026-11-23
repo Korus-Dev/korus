@@ -2229,9 +2229,7 @@ export class AppBackendServer {
         const input = requireRecord(message.params).input as MissionExecutionInput;
         const pointer = this.remoteTeams.pointerForMission(input?.id);
         if (pointer) {
-          if (input.action === 'configure' && input.teamId !== pointer.localTeamId) throw new Error('Choose members from the Mission workspace.');
-          const remoteInput = input.action === 'configure' ? { ...input, teamId: pointer.remoteTeamId } : input;
-          await this.requestHostedMissionSnapshot(pointer, message.method, { input: remoteInput });
+          await this.requestHostedMissionSnapshot(pointer, message.method, { input });
           return createAppRpcResult(message.id, await this.persistAndEmitSnapshot());
         }
         await this.missionExecution.execute(input);
@@ -2262,12 +2260,12 @@ export class AppBackendServer {
         if (!isMissionRepositoryCatalog(catalog) || catalog.some(repo => repo.url && (
           canonicalGitRemoteIdentity(repo.url) !== repo.key || cloneUrlForRemote(sanitizeGitRemoteUrl(repo.url) ?? '') !== repo.url
         ))) throw new Error('Invalid Mission repository catalog.');
-        const mission = await this.missions.createHosted({
+        const { mission, leadId } = await this.missions.createHosted({
           outcome: requireString(input.outcome, 'outcome'),
           workflowType: input.workflowType as CreateMissionInput['workflowType'],
           teamId: requireString(input.teamId, 'teamId'),
         }, catalog);
-        await this.missionExecution.execute({ id: mission.id, revision: mission.revision, action: 'run', memberId: mission.execution!.memberIds[0] });
+        await this.missionExecution.execute({ id: mission.id, revision: mission.revision, action: 'run', memberId: leadId });
         const snapshot = await this.remoteTeams.clientSnapshot();
         this.emitSnapshotUpdated(snapshot);
         return createAppRpcResult(message.id, snapshot);
