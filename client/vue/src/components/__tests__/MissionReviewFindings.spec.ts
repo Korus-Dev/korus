@@ -102,4 +102,29 @@ describe('MissionReviewFindings', () => {
     expect(wrapper.findComponent({ name: 'ElSwitch' }).exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Fix 1 selected');
   });
+
+  it('explains why findings cannot be fixed yet, and lets the user finish a Review that ended without being submitted', async () => {
+    const snapshot = createInitialSnapshot();
+    const lead = snapshot.agents[0]!.id;
+    const mission = createMission(snapshot, { outcome: 'Billing', workflowType: 'shapeAndShipFeature', teamId: snapshot.teams[0]!.id, orchestratorMemberId: lead });
+    mission.stage = 'review';
+    mission.artifacts.review.findings = [{ id: 'finding-open', priority: 'p2', title: 'Name the retry', body: 'Unnamed.', repositoryPath: '/repo',
+      selected: true, remediation: { state: 'open' }, createdAt: 'now', updatedAt: 'now' }];
+    mission.execution!.runs = [{ id: 'review-run', stage: 'review', memberId: lead, workerId: lead, status: 'running', skills: [], feedback: '', startedAt: 'now' }];
+    const executeMission = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mount(MissionReviewFindings, { props: { mission, executeMission } });
+    const finish = () => wrapper.findAll('button').find(button => button.text() === 'Finish review');
+
+    expect(wrapper.text()).toContain('Findings can be fixed once the Review is submitted.');
+    expect(finish()).toBeUndefined();
+
+    const failed = structuredClone(mission);
+    Object.assign(failed.execution!.runs[0]!, { status: 'failed', error: 'Agent finished without submitting a mission result.' });
+    await wrapper.setProps({ mission: failed });
+    expect(wrapper.text()).toContain('The Review ended before it was submitted.');
+    await finish()!.trigger('click');
+    await flushPromises();
+    expect(executeMission).toHaveBeenCalledExactlyOnceWith({ id: failed.id, revision: failed.revision, action: 'run', feedback: expect.stringContaining('Do not report them again') });
+    wrapper.unmount();
+  });
 });

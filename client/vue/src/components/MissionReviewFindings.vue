@@ -23,7 +23,20 @@
       >
         {{ t('missions.rerunReview') }}
       </button>
+      <button data-variant="primary" data-appearance="solid"
+        v-else-if="reviewEnded"
+        class="app-button app-button--primary agent-ui-interactive"
+        type="button"
+        :disabled="busy"
+        @click="finishReview"
+      >
+        {{ t('missions.finishReview') }}
+      </button>
     </header>
+
+    <p v-if="awaitingSubmission" class="mission-review-findings__notice">
+      {{ t(reviewEnded ? 'missions.reviewNotSubmitted' : 'missions.reviewFindingsAwaitSubmission') }}
+    </p>
 
     <p v-if="error" class="mission-review-findings__error" role="alert">{{ error }}</p>
     <p v-if="!findings.length" class="mission-review-findings__empty">{{ t('missions.noReviewFindings') }}</p>
@@ -64,6 +77,12 @@ const canArbitrate = computed(() => !props.readOnly && props.mission.stage === '
 ) && findings.value.some(finding => finding.remediation.state === 'open')
   && !findings.value.some(finding => finding.remediation.state === 'fixing'));
 const canRemediate = computed(() => canArbitrate.value);
+const latestReviewRun = computed(() => props.mission.execution?.runs.slice().reverse().find(run => run.stage === 'review'));
+// Findings are acted on once the Review is submitted; until then, say why nothing can be done with them.
+const awaitingSubmission = computed(() => !props.readOnly && props.mission.stage === 'review' && !canArbitrate.value
+  && findings.value.some(finding => finding.remediation.state === 'open')
+  && ['preparing', 'running', 'failed'].includes(latestReviewRun.value?.status ?? ''));
+const reviewEnded = computed(() => awaitingSubmission.value && latestReviewRun.value?.status === 'failed');
 const canRerunReview = computed(() => !props.readOnly && props.mission.stage === 'review' && findings.value.length > 0 && findings.value.every(finding => (
   finding.remediation.state === 'fixed' || finding.remediation.state === 'skipped'
 )));
@@ -97,6 +116,11 @@ function selectFinding(findingId: string, selected: boolean): void {
 function fixSelected(): void {
   void run({ id: props.mission.id, revision: props.mission.revision, action: 'fixSelectedReviewFindings' });
 }
+/** What the lead is told when the user asks it to finish a Review that ended unsubmitted. */
+const finishReviewFeedback = 'Your Review ended before it was submitted. The findings you reported are saved: Do not report them again. Submit the Review result now with a concise summary.';
+function finishReview(): void {
+  void run({ id: props.mission.id, revision: props.mission.revision, action: 'run', feedback: finishReviewFeedback });
+}
 function rerunReview(): void {
   void run({ id: props.mission.id, revision: props.mission.revision, action: 'rerunReview' });
 }
@@ -108,6 +132,7 @@ function chatAboutFinding(findingId: string): void {
 
 <style scoped>
 .mission-review-findings { display: grid; gap: var(--space-4); margin-bottom: var(--space-8); }
+.mission-review-findings__notice { margin: 0; color: var(--color-text-muted); font-size: var(--font-size-13); }
 header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 header > div { display: grid; gap: var(--space-1); }
 h2 { margin: 0; font-size: var(--font-size-16); }

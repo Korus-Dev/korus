@@ -668,6 +668,10 @@ export class MissionExecutionService {
           tests: [proposal.implementation.tests, evidence.tests].filter(Boolean).join('\n\n'),
         };
         run.implementationResult = structuredClone(evidence);
+      } else if (run.stage === 'review' && !input.artifacts) {
+        // A Review result is its summary: findings are in the ledger and every other document is the Mission's own.
+        if (input.ticketId !== undefined || input.implementation !== undefined) throw new Error('Submit the Review summary only.');
+        proposal.review = { ...proposal.review, summary: input.summary.trim(), findings: structuredClone(mission.artifacts.review.findings ?? []) };
       } else {
         if (!input.artifacts || input.ticketId !== undefined || input.implementation !== undefined) throw new Error('This stage requires the complete artifacts result.');
         if (run.stage === 'requirements') proposal.requirements = structuredClone(input.artifacts.requirements);

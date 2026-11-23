@@ -1193,6 +1193,45 @@ describe('mission execution', () => {
     await expect(h.service.submit(workerId, { summary: 'Stale result', artifacts })).rejects.toThrow('active run');
   });
 
+  it('lets the lead finish a Review it ended without submitting with a summary alone, keeping findings and accepted work', async () => {
+    const h = setup();
+    const repositoryPath = h.originalAgents[0]!.folder!;
+    const lead = h.originalAgents[0]!.id; const implementer = h.originalAgents[1]!.id;
+    await h.store.change(h.current().id, mission => {
+      mission.stage = 'review';
+      mission.artifacts.requirements = { problem: 'Billing', acceptance: 'Owner pays' };
+      mission.artifacts.tickets = [{ title: 'Checkout', body: 'A long accepted ticket body', repositoryPath, done: true }];
+      mission.artifacts.implementation = { changes: 'Checkout implemented', tests: 'Tests pass' };
+      mission.execution!.workspaces = [{ repositoryPath, path: '/mission/billing', branch: 'mission/billing' }];
+      mission.execution!.runs = [
+        { id: 'tickets-run', stage: 'tickets', memberId: lead, workerId: lead, status: 'accepted', skills: [], feedback: '', startedAt: 'before', finishedAt: 'before' },
+        { id: 'implementation-run', stage: 'implementation', memberId: implementer, workerId: implementer, ticketIndex: 0, repositoryPath, status: 'accepted', skills: [], feedback: '', startedAt: 'before', finishedAt: 'before' },
+        { id: 'review-run', stage: 'review', memberId: lead, workerId: lead, status: 'running', skills: [], feedback: '', startedAt: 'now' },
+      ];
+    });
+    await h.service.reportReviewFinding(lead, { priority: 'p2', title: 'Name the retry', body: 'The retry is unnamed.', repositoryPath });
+    await h.service.writeArtifact(lead, { stage: 'review', content: '# Review\nOne finding to fix.' });
+    const accepted = structuredClone(h.current().artifacts);
+    // The reviewer ended its turn without submitting.
+    await h.service.agentFinished(lead, 'review-turn', false);
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ id: 'review-run', status: 'failed' });
+
+    // Finish review: the same lead continues with the user's feedback instead of starting over.
+    const feedback = 'Do not report them again. Submit the Review result now.';
+    await h.command({ action: 'run', feedback }); await h.service.waitForLaunches();
+    expect(h.current().execution!.runs.at(-1)).toMatchObject({ stage: 'review', workerId: lead, status: 'running', feedback });
+    expect(h.ports.continueStage).toHaveBeenLastCalledWith(lead, expect.any(String));
+    expect(h.service.developerInstructionsForAgent(lead)).toContain(feedback);
+
+    await expect(h.service.submit(lead, { summary: 'One finding to fix.' })).resolves.toMatchObject({ status: 'awaitingReview' });
+
+    const review = h.current().execution!.runs.at(-1)!;
+    expect(review.proposal!.review).toMatchObject({ summary: 'One finding to fix.', findings: accepted.review.findings });
+    for (const stage of ['requirements', 'tickets', 'implementation'] as const) expect(review.proposal![stage]).toStrictEqual(accepted[stage]);
+    await h.command({ action: 'fixSelectedReviewFindings' });
+    expect(h.current().artifacts.review.findings![0]!.remediation.state).toBe('fixing');
+  });
+
   it('persists structured Review findings and remediates the selected set', async () => {
     const h = setup();
     const repositoryPath = h.originalAgents[0]!.folder!;

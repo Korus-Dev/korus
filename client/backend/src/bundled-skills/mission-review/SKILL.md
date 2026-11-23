@@ -10,6 +10,6 @@ description: Review Mission implementation evidence and repository changes befor
 - Make each inspection exhaustive across the accepted requirements, tickets, evidence and affected code, including relevant callers, contracts, tests and failure paths. Minimize review/fix rounds by completing the full scope and reporting every supported actionable issue before submitting Review; continue inspecting after initial findings.
 - In follow-up reviews, verify prior fixes and inspect the full current scope for regressions and other previously missed issues. Report any new actionable findings; keep every finding evidence-backed.
 - report-mission-review-finding immediately for every actionable issue: priority, exact represented repository, file/line if available.
-- Read current Review revision before write-mission-artifact. submit-mission-result with complete artifacts, changing only Review.
+- Read current Review revision before write-mission-artifact, then always finish with submit-mission-result sending only `summary`, the concise Review result. Without it the Review cannot be acted on.
 - End with 1–2 sentences: none/how many, invite questions; details stay in ledger/artifact. Not shipping approval.
 - Requested remediation: selected findings only, mapped Mission worktrees. Verify and commit coherent local fixes before update-mission-review-finding(status=fixed, evidence). Blocked findings stay unresolved. No new Review submission/round, push/merge/PR.
