@@ -870,7 +870,10 @@ conversation or sequence cursor outlives the backend instance.
   out of Electron's destructive privileged replacement path; users authorize those
   installations through Finder instead, with the existing app untouched. Ordinary
   replacement requires confirmation; cancellation or failure exits without starting
-  the daemon. Installer diagnostics use the main log. The DMG presents one app icon;
+  the daemon. Before relocation, Korus records the original DMG identified by the
+  mount table and disk image inventory, including launches moved by Gatekeeper.
+  The installed app can offer to trash that exact file even after the volume is ejected.
+  Installer diagnostics use the main log. The DMG presents one app icon;
   its background SVG and 1x/2x PNG assets share the Finder window's logical size.
 - Desktop ships a private, checksum-verified Node runtime beside the daemon bundle
   (`Resources/runtime/node`, `Resources/daemon/korusd` + `daemon.mjs`). No system
