@@ -78,6 +78,11 @@ export class HarnessAgentDriver implements AgentProviderDriver {
   }
 
   get coordinationPolicy() { return this.policy.coordinationPolicy; }
+  get readConversationUsage(): AgentProviderDriver['readConversationUsage'] {
+    const harness: Harness & { readConversationUsage?: AgentProviderDriver['readConversationUsage'] } = this.harness;
+    const capabilities = harness.getProviderCapabilities();
+    if ('persistedUsage' in capabilities && capabilities.persistedUsage === true) return harness.readConversationUsage?.bind(harness);
+  }
 
   private forward(event: HarnessEvent): void {
     if (event.type === 'session.patch') this.publishConversation(event.session, event.patch);
@@ -220,7 +225,7 @@ export class HarnessAgentDriver implements AgentProviderDriver {
    * What the harness reports, as Korus records it. The permissions are the ones the harness offers, with their danger;
    * Korus only puts its own words on them, and an id it has no words for shows as itself.
    */
-  private liveCapabilities({ permissions, ...rest }: ReturnType<Harness['getProviderCapabilities']>) {
+  private liveCapabilities({ permissions, persistedUsage: _persistedUsage, ...rest }: ReturnType<Harness['getProviderCapabilities']> & { persistedUsage?: boolean }) {
     if (!permissions) return rest;
     const described = new Map((defaultProviderCapabilities(this.provider).permissionModes ?? []).map(mode => [mode.id, mode]));
     return { ...rest, permissionModes: permissions.map(({ id, dangerous }) => {

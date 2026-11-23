@@ -144,6 +144,12 @@ export class ProviderDriverRpc {
 
   getCapabilities(agent: Agent) { return this.requireDriver(agent.provider).getCapabilities(agent); }
   providers(): HarnessProvider[] { return [...this.drivers.keys()]; }
+  persistedUsageProviders(): HarnessProvider[] {
+    return this.providers().filter(provider => this.drivers.get(provider)?.readConversationUsage);
+  }
+  async readConversationUsage(provider: HarnessProvider, sessionId: string) {
+    return await this.drivers.get(provider)?.readConversationUsage?.(sessionId) ?? [];
+  }
   getCoordinationPolicy(provider: HarnessProvider) { return resolveProviderCoordinationPolicy(this.drivers.get(provider)?.coordinationPolicy); }
 
   async refreshConversationContext(agent: Agent): Promise<void> {

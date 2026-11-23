@@ -187,6 +187,7 @@ export type AgentProviderDriver = Omit<HarnessDriver<Agent, BackendEvent>, 'getC
   agentChanged?(agent: Agent): void;
   onRequestUsage?(listener: (observation: import('./usage').RequestObservation) => void): () => void;
   onUsage?(listener: (observation: import('./usage').ExecutionObservation) => void): () => void;
+  readConversationUsage?(conversationId: string): Promise<readonly import('./usage').PersistedExecutionUsage[]>;
   authenticate?(request: import('./contracts/provider-setup').ProviderAuthenticationAction): Promise<import('./contracts/provider-setup').ProviderAuthentication>;
   getRuntimeStatus(): ProviderRuntimeStatus;
   getCapabilities(agent: Agent): ProviderCapabilities;

@@ -521,6 +521,7 @@ describe('daemon runtime', () => {
       expect.objectContaining({ id: 'provider-updates', intervalMs: 2_000 }),
       expect.objectContaining({ id: 'telemetry-upload', intervalMs: 60000, runOnStart: false }),
       expect.objectContaining({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true }),
+      expect.objectContaining({ id: 'persisted-usage', intervalMs: 10_000, runOnStart: true }),
       expect.objectContaining({ id: 'companion-upload-cleanup', intervalMs: 3_600_000, runOnStart: true }),
       expect.objectContaining({ id: 'pull-request-monitor', intervalMs: 300_000, runOnStart: true }),
     ]);

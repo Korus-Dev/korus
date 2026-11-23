@@ -360,6 +360,17 @@ export async function createDaemonRuntime(options: DaemonRuntimeOptions): Promis
   // The first upload re-checks every delivered hour, which is real work: it waits a minute, so starting up never pays for it.
   if (telemetryUpload) scheduler.register({ id: 'telemetry-upload', intervalMs: 60_000, runOnStart: false, run: () => telemetryUpload!.tick() });
   scheduler.register({ id: 'pricing-updates', intervalMs: 60_000, runOnStart: true, run: () => pricing.refresh() });
+  let lastUsageReconciliation = 0;
+  scheduler.register({
+    id: 'persisted-usage', intervalMs: 10_000, runOnStart: true,
+    async run() {
+      const now = Date.now();
+      const full = now - lastUsageReconciliation >= 60 * 60_000;
+      await usage.reconcileConversationUsage(driverRpc.persistedUsageProviders(),
+        (provider, sessionId) => driverRpc.readConversationUsage(provider, sessionId), full ? 0 : now - 24 * 60 * 60_000);
+      if (full) lastUsageReconciliation = now;
+    },
+  });
   scheduler.register({ id: 'companion-upload-cleanup', intervalMs: 3_600_000, runOnStart: true, run: () => cleanupPromptUploads(path.join(backendHomeDir(), 'companion'), {
     activeAgentIds: snapshot.agents.filter(agent => agent.status.type === 'working' || agent.status.type === 'awaitingInput').map(agent => agent.id),
     protectedPaths: (snapshot.queuedPrompts ?? []).flatMap(prompt => prompt.options?.attachments?.map(attachment => attachment.path) ?? []),

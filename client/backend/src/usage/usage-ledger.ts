@@ -15,6 +15,7 @@ import {
   type UsageSummary,
   type UsageCostReason,
   type Consumption,
+  type PersistedExecutionUsage,
   type UsageModelVariant,
   usageServiceTier,
   usageModelVariantKey,
@@ -25,9 +26,11 @@ import type { PricingHistory } from "../pricing/schema";
 import {
   priceRequest,
   priceExecution,
+  executionPricingProvider,
   type RequestPrice,
 } from "../pricing/evaluate";
 import { addCost, emptyCost } from "./cost";
+import { persistedUsageSchema, reconcilePersistedUsage } from './persisted-usage';
 import {
   telemetryServiceTier,
   validTelemetryProjectionInput,
@@ -72,6 +75,7 @@ export class UsageLedger {
       this.db.exec(
         "CREATE TABLE IF NOT EXISTS requests(provider TEXT NOT NULL,session_id TEXT NOT NULL,turn_id TEXT NOT NULL,request_id TEXT NOT NULL,at INTEGER NOT NULL,revision INTEGER NOT NULL,status TEXT NOT NULL,observation TEXT NOT NULL,PRIMARY KEY(provider,session_id,turn_id,request_id)); CREATE INDEX IF NOT EXISTS requests_at ON requests(at); CREATE TRIGGER IF NOT EXISTS execution_requests_delete AFTER DELETE ON executions BEGIN DELETE FROM requests WHERE provider=OLD.provider AND session_id=OLD.session_id AND turn_id=OLD.turn_id; END;",
       );
+      this.db.exec(persistedUsageSchema);
       const since = this.db
         .prepare("SELECT value FROM metadata WHERE key='since'")
         .get()?.value;
@@ -193,6 +197,24 @@ export class UsageLedger {
     this.db!.exec(
       "DELETE FROM executions WHERE rowid IN (SELECT rowid FROM executions ORDER BY started_at DESC,rowid DESC LIMIT -1 OFFSET 50000)",
     );
+    this.db!.prepare('DELETE FROM persisted_usage WHERE started_at<?').run(this.now() - retention);
+  }
+  conversationUsageTargets(provider: string, updatedSince = 0): string[] {
+    return this.open()?.prepare("SELECT DISTINCT session_id FROM executions WHERE provider=? AND started_at>=? AND (updated_at>=? OR phase='started')")
+      .all(provider, this.now() - retention, updatedSince).map(row => String(row.session_id)) ?? [];
+  }
+  reconcileConversationUsage(provider: string, rootId: string, samples: readonly PersistedExecutionUsage[]): number {
+    const db = this.open();
+    if (!db || !samples.length) return 0;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const changed = reconcilePersistedUsage(db, provider, rootId, samples, Math.max(this.since, this.now() - retention), this.now());
+      db.exec('COMMIT');
+      return changed;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
   }
   async observe(
     event: ExecutionObservation,
@@ -478,12 +500,15 @@ export class UsageLedger {
         }
       for (const row of db
         .prepare(
-          "SELECT * FROM executions WHERE " +
+          `SELECT executions.*, (SELECT tokens FROM persisted_usage WHERE provider=executions.provider
+            AND root_id=executions.session_id AND turn_id=executions.turn_id AND supplemental=0) reconciled_tokens FROM executions WHERE ` +
             conditions.join(" AND ") +
             " ORDER BY started_at LIMIT 50000",
         )
         .all(...args)) {
         const record = this.decode(row);
+        const reconciled = !projection && typeof row.reconciled_tokens === 'string';
+        if (reconciled) record.tokens = JSON.parse(String(row.reconciled_tokens));
         // Legacy Claude rows predate request capture. Modern rows must retain
         // their request/provider evidence, including unresolved proxy routing.
         const executionEstimate =
@@ -495,13 +520,7 @@ export class UsageLedger {
           !observedExecutions.has(
             JSON.stringify([record.provider, record.sessionId, record.turnId]),
           );
-        const estimatedProvider = executionEstimate
-          ? record.provider === "claude"
-            ? "anthropic"
-            : record.provider === "antigravity"
-              ? "google"
-              : "openai"
-          : null;
+        const estimatedProvider = executionEstimate ? executionPricingProvider(record.provider) : null;
         if (filter.apiProvider && filter.apiProvider !== estimatedProvider)
           continue;
         const modelVariant = !projection && filter.group === "model" && !filter.groupServiceTiers
@@ -535,7 +554,7 @@ export class UsageLedger {
             dailyGroups,
             record.startedAt,
             filter.group === "apiProvider" ? estimatedProvider! : label,
-            priceExecution(record, prices),
+            priceExecution(record, prices, reconciled ? { ignoreContextPremiums: false } : undefined),
             cost,
             undefined,
             true,
@@ -556,6 +575,43 @@ export class UsageLedger {
             modelVariant,
             reportsTokens?.(record.provider),
           );
+      }
+      // Supplemental counters inherit the model of their linked parent turn for local estimates.
+      if (!projection) {
+        const since = filter.from ? dayStart(filter.from, filter.timeZone) : 0;
+        const until = filter.to ? dayStart(nextDay(filter.to), filter.timeZone) : this.now() + 60000;
+        const supplemental = db.prepare(`SELECT n.started_at, n.tokens, e.provider, e.team_id, e.repository, e.agent_id, e.model, e.service_tier
+          FROM persisted_usage n JOIN executions e ON e.provider=n.provider AND e.session_id=n.root_id AND e.turn_id=n.turn_id
+          WHERE n.supplemental=1 AND n.started_at>=? AND n.started_at<?`)
+          .all(Math.max(this.since, this.now() - retention, since), until);
+        for (const row of supplemental) {
+          const provider = String(row.provider);
+          const estimatedProvider = executionPricingProvider(provider);
+          if (reportsTokens?.(provider) === false || (filter.provider && filter.provider !== provider)
+            || (filter.apiProvider && filter.apiProvider !== estimatedProvider) || (filter.model && filter.model !== row.model)
+            || (filter.teamId && filter.teamId !== row.team_id) || (filter.repository && filter.repository !== row.repository)
+            || (filter.agentId && filter.agentId !== row.agent_id)) continue;
+          const column = filter.group === 'agentId' ? 'agent_id' : filter.group === 'teamId' ? 'team_id' : filter.group;
+          const label = column ? String(row[column] ?? 'Unknown') : 'All';
+          const model = typeof row.model === 'string' ? row.model : null;
+          const serviceTier = typeof row.service_tier === 'string' ? row.service_tier : null;
+          const variant = filter.group === 'model' && !filter.groupServiceTiers
+            ? { model, serviceTier: usageServiceTier(provider, serviceTier) } : undefined;
+          const key = variant ? usageModelVariantKey(variant) : label;
+          const at = Number(row.started_at);
+          const tokens = JSON.parse(String(row.tokens)) as Consumption;
+          if (!filter.apiProvider) {
+            const day = dayOf(at, filter.timeZone);
+            const groups = dailyGroups.get(day) ?? new Map<string, Bucket>();
+            dailyGroups.set(day, groups);
+            this.addTokens(this.bucket(rows, key, variant), tokens);
+            this.addTokens(this.bucket(daily, day), tokens);
+            this.addTokens(this.bucket(groups, key, variant), tokens);
+          }
+          const price = estimatedProvider ? priceExecution({ provider, model, serviceTier, startedAt: at, tokens }, prices, { ignoreContextPremiums: false }) : null;
+          this.aggregateCost(rows, daily, dailyGroups, at, filter.group === 'apiProvider' ? estimatedProvider ?? key : key,
+            price, cost, undefined, true, variant, true);
+        }
       }
       for (const row of requestRows) {
         const event = JSON.parse(String(row.observation)) as RequestObservation;
@@ -689,31 +745,7 @@ export class UsageLedger {
     else row[record.phase]++;
     if (record.tokens && reportsTokens !== false) {
       row.measuredTurns++;
-      row.tokens ??= {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        reasoning: 0,
-        total: 0,
-      };
-      for (const key of [
-        "input",
-        "output",
-        "cacheRead",
-        "cacheWrite",
-        "reasoning",
-        "total",
-      ] as (keyof Consumption)[]) {
-        const value =
-          key === "total"
-            ? (record.tokens.total ?? 0)
-            : record.tokens[key];
-        (row.tokens as Record<string, number | null>)[key] =
-          value === null || value === undefined || row.tokens[key] === null
-            ? null
-            : (row.tokens[key] ?? 0) + value;
-      }
+      this.addTokens(row, record.tokens);
     }
     const timing = record.timing;
     if (timing) {
@@ -737,13 +769,40 @@ export class UsageLedger {
     }
     rows.set(label, row);
   }
+  private addTokens(row: Bucket, tokens: Consumption): void {
+    row.tokens ??= {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      reasoning: 0,
+      total: 0,
+    };
+    for (const key of [
+      "input",
+      "output",
+      "cacheRead",
+      "cacheWrite",
+      "reasoning",
+      "total",
+    ] as (keyof Consumption)[]) {
+      const value =
+        key === "total"
+          ? (tokens.total ?? 0)
+          : tokens[key];
+      (row.tokens as Record<string, number | null>)[key] =
+        value === null || value === undefined || row.tokens[key] === null
+          ? null
+          : (row.tokens[key] ?? 0) + value;
+    }
+  }
   async clear(): Promise<void> {
     const db = this.open();
     if (!db) throw new Error("Statistics are unavailable.");
     const since = this.now();
     db.exec("BEGIN IMMEDIATE");
     try {
-      db.exec("DELETE FROM executions");
+      db.exec("DELETE FROM executions; DELETE FROM persisted_usage");
       db.prepare("INSERT OR REPLACE INTO metadata VALUES('since',?)").run(
         String(since),
       );

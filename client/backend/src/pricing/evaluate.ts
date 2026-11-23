@@ -1,4 +1,5 @@
 import type {
+  ApiPricingProvider,
   RequestObservation,
   UsageCostReason,
   UsageRecord,
@@ -324,14 +325,23 @@ export function priceRequest(
   };
 }
 
+type ExecutionPriceInput = Pick<UsageRecord, 'provider' | 'tokens' | 'model' | 'serviceTier' | 'startedAt'>;
+export function executionPricingProvider(provider: string): ApiPricingProvider | null {
+  if (provider === 'antigravity') return 'google';
+  if (provider === 'claude') return 'anthropic';
+  if (provider === 'codex') return 'openai';
+  return null;
+}
+
 /** Price retained execution counters without fabricating billable request identities. */
 export function priceExecution(
-  record: UsageRecord,
+  record: ExecutionPriceInput,
   history: PricingHistory,
+  options: { ignoreContextPremiums?: boolean } = { ignoreContextPremiums: true },
 ): RequestPrice {
   const t = record.tokens;
   if (!t) return { reason: "missing-token-usage" };
-  if (record.provider === "antigravity") return priceAntigravityExecution(record, t, history);
+  if (record.provider === "antigravity") return priceAntigravityExecution(record, t, history, options);
   const claude = record.provider === "claude";
   const tier =
     !record.serviceTier || ["normal", "default"].includes(record.serviceTier)
@@ -370,7 +380,7 @@ export function priceExecution(
       reportedMode: claude && record.serviceTier === "fast" ? "fast" : null,
     },
     history,
-    { ignoreContextPremiums: true },
+    options,
   );
 }
 
@@ -384,15 +394,16 @@ function googleCatalogModel(model: string | null, history: PricingHistory): stri
 }
 
 /**
- * The ACP reports per-turn totals for the model selected in the session, not
- * individual billable requests or the served model, so this is the standard-tier
- * Gemini API price of those tokens.
+ * Execution counters yield the standard-tier Gemini API equivalent for the
+ * recorded model. A cache write needs attribution and rates of its own.
  */
 function priceAntigravityExecution(
-  record: UsageRecord,
+  record: ExecutionPriceInput,
   t: NonNullable<UsageRecord["tokens"]>,
   history: PricingHistory,
+  options: { ignoreContextPremiums?: boolean },
 ): RequestPrice {
+  if (t.cacheWrite !== 0) return { reason: 'missing-cache-usage' };
   return priceRequest(
     {
       at: record.startedAt,
@@ -417,6 +428,6 @@ function priceAntigravityExecution(
       reportedMode: null,
     },
     history,
-    { ignoreContextPremiums: true },
+    options,
   );
 }

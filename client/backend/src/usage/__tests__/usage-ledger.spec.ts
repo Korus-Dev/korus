@@ -4,7 +4,48 @@ import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { UsageLedger } from "../usage-ledger";
+import { UsageService } from '../usage-service';
 import type { ExecutionObservation } from "@workspace/core/usage";
+
+it('attributes and prices reconciled usage with the parent model without adding prompted turns', async () => {
+  const at = Date.parse('2026-11-23T19:00:00Z');
+  const ledger = new UsageLedger(':memory:', () => at);
+  const usage = new UsageService(ledger, () => undefined);
+  const tokens = (total: number) => ({ input: total - 10, output: 10, total, cacheRead: total / 2, cacheWrite: 0, reasoning: 4 });
+  const event = { provider: 'antigravity', sessionId: 'parent', turnId: 'app-turn', agentId: 'agent', model: 'gemini-4-neon', at };
+  try {
+    await ledger.observe({ ...event, phase: 'started' }, { teamId: 'team', repository: 'repo' });
+    const native = [
+      { sessionId: 'parent', executionId: 'prompt', startedAt: at + 20, prompted: true, tokens: tokens(100) },
+      { sessionId: 'worker', executionId: 'delegated', startedAt: at + 40, prompted: false, tokens: tokens(300) },
+      { sessionId: 'parent', executionId: 'follow-up', startedAt: at + 20_000, prompted: false, tokens: tokens(200) },
+      { sessionId: 'parent', executionId: 'external-prompt', startedAt: at + 30_000, prompted: true, tokens: tokens(900) },
+    ];
+    await usage.reconcileConversationUsage(['antigravity'], async () => native.slice(0, 2));
+    expect(ledger.query({ agentId: 'agent' }).rows[0]).toMatchObject({ started: 1, inProgress: 1, tokens: { total: 300 } });
+    await ledger.observe({ ...event, at: at + 5_000, phase: 'completed', tokens: tokens(80) }, { teamId: 'team', repository: 'repo' });
+    ledger.reconcileConversationUsage('antigravity', 'parent', native);
+    ledger.reconcileConversationUsage('antigravity', 'parent', native);
+    expect(ledger.query({ agentId: 'agent', teamId: 'team', from: '2026-11-23', to: '2026-11-23' }).rows[0]).toMatchObject({
+      started: 1, measuredTurns: 1, tokens: { total: 600 }, cost: { usd: 0.001305, requests: 0 },
+    });
+    const byModel = ledger.query({ group: 'model' });
+    expect(byModel.rows).toMatchObject([{ label: 'gemini-4-neon', started: 1, tokens: { total: 600 } }]);
+    expect(byModel.daily?.[0]?.groups).toMatchObject([{ label: 'gemini-4-neon', tokens: { total: 600 } }]);
+    expect(ledger.query({ model: 'gemini-4-neon' }).rows[0]?.tokens?.total).toBe(600);
+    expect(ledger.query({ group: 'apiProvider', apiProvider: 'google' }).cost).toMatchObject({ usd: 0.001305, requests: 0 });
+    ledger.reconcileConversationUsage('antigravity', 'parent', [{ ...native[1]!, tokens: tokens(400) }]);
+    ledger.reconcileConversationUsage('antigravity', 'parent', native);
+    expect(ledger.query().daily?.[0]?.tokens?.total).toBe(700);
+    ledger.reconcileConversationUsage('antigravity', 'parent', [{
+      ...native[1]!, executionId: 'unmeasured-cache-writes', tokens: { ...tokens(50), cacheWrite: null },
+    }]);
+    expect(ledger.query().cost).toMatchObject({ usd: 0.0014625, coverage: 'partial', reasons: [{ reason: 'missing-cache-usage', count: 1 }] });
+    await ledger.clear();
+    ledger.reconcileConversationUsage('antigravity', 'parent', native);
+    expect(ledger.query().rows).toEqual([]);
+  } finally { await ledger.close(); }
+});
 
 it("retains known token and cost subtotals with coverage and replaces late measurements before sealing", async () => {
   const at = Date.parse("2026-10-15T12:00:00Z");

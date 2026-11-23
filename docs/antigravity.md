@@ -36,22 +36,25 @@ so reads are shared and reused for two minutes. Quota windows carry the model gr
 as their label, and mobile does not list this engine because its clients cannot show
 that label.
 
-## Request pricing evidence
+## Token accounting
 
-Antigravity executions carry the model selected in the session and, when the runtime
-reports it, the per-turn token totals from `PromptResponse.usage`. The qualified
-Google-hosted ACP 1.4.5 server populates it for completed, failed and cancelled
-turns. Request coverage stays partial with `acp-request-evidence-unavailable`:
-the ACP exposes no identity for each underlying model call, no served model or
-billing tier, and no subagent consumption.
+Antigravity prompt completions can provide token counts through `PromptResponse.usage`.
+The SDK normalizes cached input and reasoning into the input and output totals.
+Context occupancy comes from `usage_update` and does not enter token accounting.
 
-Measured turns on Gemini models are priced as an API-equivalent estimate at the
-Google standard tier from the selected model, thinking-level suffix removed. Other
-selected models, or turns without usage, return unavailable USD rather than zero.
-`PromptResponse.usage` reports input inclusive of cached reads and leaves thoughts
-out of output; Korus stores thoughts as part of output. Non-zero cached writes are unmodeled and leave the turn
-unmeasured. `usage_update` (`used`/`size`) is context occupancy only and never
-becomes consumption; neither does cumulative session `cost`.
+Korus reconciles retained sessions at daemon startup and periodically while it runs.
+Recent or active sessions refresh more frequently. The driver reads persisted counters without opening
+a provider session. Correlated prompt counters replace the subtotal for that turn
+in local analytics. Worker and background counters contribute to the originating
+agent's token totals without adding prompted turns. A native execution can accumulate
+more usage, so reconciliation uses its stable native identity and replaces its
+counters on subsequent reads.
+
+Local analytics uses the linked parent turn's model for worker and background
+usage. Reported tokens can support an API-equivalent estimate at the selected
+Gemini model's standard rates, with cached input priced separately. Reconciled
+usage that lacks required context or cache evidence has unavailable USD. Native
+counters do not establish billable request identities, a served tier, or a charge.
 
 The qualified executable reports protocol 2 with the v1-shaped wire contract. Its
 bundled Python adapter is the evidence boundary; the public CLI, Python SDK and

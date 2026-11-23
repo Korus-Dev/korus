@@ -48,6 +48,14 @@ export type Consumption = {
   cacheWrite: number | null;
   reasoning?: number | null;
 };
+/** Numeric counters from a driver's persisted conversation history. */
+export type PersistedExecutionUsage = {
+  sessionId: string;
+  executionId: string;
+  startedAt: number;
+  prompted: boolean;
+  tokens: Consumption;
+};
 export type UsageRecord = Omit<ExecutionObservation, "phase" | "generation"> & {
   phase: Exclude<ExecutionObservation["phase"], "usage">;
   startedAt: number;

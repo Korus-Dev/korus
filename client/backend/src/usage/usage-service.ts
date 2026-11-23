@@ -1,6 +1,7 @@
 import type { Agent, BackendPublishedEvent } from "@workspace/core/contracts";
 import type {
   ExecutionObservation,
+  PersistedExecutionUsage,
   RequestObservation,
 } from "@workspace/core/usage";
 import { UsageLedger } from "./usage-ledger";
@@ -18,6 +19,7 @@ import { repositoryIdentityOf, resolveRepositoryRoots } from "./repository-ident
 /** Records numeric observations in the owning daemon's local ledger. */
 export class UsageService {
   private chain: Promise<void> = Promise.resolve();
+  private reconciliation?: Promise<void>;
   private executions = new Map<string, string>();
   private submitted = new Map<string, { at: number; wall: number }>();
   constructor(
@@ -118,6 +120,19 @@ export class UsageService {
   async drain(): Promise<void> {
     await this.chain;
   }
+  reconcileConversationUsage<P extends string>(providers: readonly P[],
+    read: (provider: P, sessionId: string) => Promise<readonly PersistedExecutionUsage[]>, updatedSince = 0): Promise<void> {
+    if (this.reconciliation) return this.reconciliation;
+    this.reconciliation = this.drain().then(async () => {
+      for (const provider of providers) {
+        for (const sessionId of this.local.conversationUsageTargets(provider, updatedSince)) {
+          try { this.local.reconcileConversationUsage(provider, sessionId, await read(provider, sessionId)); }
+          catch { /* Retry this conversation on the next scan without blocking others. */ }
+        }
+      }
+    }).finally(() => { this.reconciliation = undefined; });
+    return this.reconciliation;
+  }
   /** Retained UTC buckets with local ledger observations. */
   async telemetryHours() {
     await this.drain();
@@ -148,6 +163,7 @@ export class UsageService {
   }
   async close(): Promise<void> {
     await this.chain;
+    await this.reconciliation;
     await this.local.close();
   }
 }

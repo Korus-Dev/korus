@@ -333,6 +333,7 @@ function forbiddenImport(area, file, specifier, typeOnly = false) {
             "../pricing/evaluate",
             "./cost",
             "./usage-ledger",
+            "./persisted-usage",
             "./turn-clock",
           ];
     if (!allowed.includes(specifier))
@@ -444,6 +445,7 @@ function isTelemetryProjection(file) {
       "core/src/telemetry.ts",
       "client/backend/src/usage/usage-ledger.ts",
       "client/backend/src/usage/usage-service.ts",
+      "client/backend/src/usage/persisted-usage.ts",
     ].includes(relative) || relative.startsWith("client/backend/src/usage/telemetry")
   );
 }
