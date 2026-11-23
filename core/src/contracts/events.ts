@@ -33,6 +33,18 @@ type EventEnvelope = {
 };
 
 type EventWith<Variant> = EventEnvelope & Variant;
+/**
+ * A home the daemon could not open: the file at fault, why, and the newest backup of it this build can read. The
+ * daemon waits for the user to restore it or to quit.
+ */
+export type StoreRecovery = {
+  file: string;
+  /** `newer` when a newer build wrote the file; `unreadable` when it is damaged or missing. */
+  reason: 'newer' | 'unreadable';
+  message: string;
+  backup: { name: string; createdAt: string } | null;
+};
+
 export type ConversationSettings = {
   model?: string;
   reasoningEffort?: string;
@@ -100,6 +112,11 @@ type AppEvent =
   | EventWith<{
       type: 'client.connectionChanged';
       payload: ProviderConnectionState;
+    }>
+  | EventWith<{
+      type: 'client.storeRecoveryRequired';
+      /** Null once the home opens again. */
+      payload: StoreRecovery | null;
     }>
   | EventWith<{
       type: 'snapshot.updated';
@@ -296,7 +313,7 @@ type AppEvent =
       };
     }>;
 
-export type ClientTransportEvent = Extract<AppEvent, { type: "client.connectionChanged" }>;
+export type ClientTransportEvent = Extract<AppEvent, { type: "client.connectionChanged" | "client.storeRecoveryRequired" }>;
 export type ClientEffectEvent = Extract<AppEvent, { type: "client.markdownDisplayRequested" | "client.celebrationRequested" | "browser.annotationCreated" }>;
 /** What happens in a conversation, as the harness reports it. Daemons act on it; windows follow session state instead. */
 export type ConversationActivityEvent = Extract<AppEvent, { type: ConversationActivityEventType }>;

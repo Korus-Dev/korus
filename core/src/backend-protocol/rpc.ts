@@ -63,6 +63,8 @@ export const appRpcErrorCodes = {
   internalError: -32603,
   backendUnavailable: -32000,
   timeout: -32001,
+  /** The daemon could not open its home; the error data is a `StoreRecovery`. */
+  storeUnavailable: -32002,
 } as const;
 
 export type AppBackendHealth = {

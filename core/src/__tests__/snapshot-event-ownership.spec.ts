@@ -51,6 +51,7 @@ const rendererEventTypes = [
   'conversation.sessionPatch',
   'provider.authenticationChanged',
   'client.connectionChanged',
+  'client.storeRecoveryRequired',
   'models.changed',
   'skills.changed',
   'client.markdownDisplayRequested',

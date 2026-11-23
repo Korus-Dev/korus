@@ -34,7 +34,7 @@ export function migrateData(file: string, data: unknown, version: number, target
   while (at < target) {
     const step = steps.find((candidate) => candidate.from === at);
     if (!step || step.to !== at + 1) {
-      throw new StoreFormatError(`${file}: no migration from schema ${at} to ${at + 1}.`);
+      throw new StoreFormatError(`${file}: no migration from schema ${at} to ${at + 1}.`, file);
     }
     current = step.up(current);
     at = step.to;

@@ -2,7 +2,7 @@ import { DictationSettingsStore } from './dictation-settings';
 import { CustomSkinStore } from './custom-skins';
 import { runtimeDaemonHome } from './runtime-config';
 import { createDictationSpeechPreparer, createDictationSpeechStarter } from './dictation-routing';
-import type { HarnessProvider, AppApi, WorkProviderConnectOptions } from '@workspace/core/contracts';
+import type { HarnessProvider, AppApi, StoreRecovery, WorkProviderConnectOptions } from '@workspace/core/contracts';
 import type { ProviderAuthentication, ProviderAuthenticationAction, ProviderAuthenticationOptions } from '@workspace/core/contracts/provider-setup';
 import { isConversationFrame } from '@workspace/core/companion-protocol';
 import { mobileRuntimePaths } from './mobile/runtime';
@@ -32,7 +32,7 @@ import { isWindowNavigation, isWindowSetup, isWindowViewState, type ComposerDraf
 import { createRuntimeAppBackendClient, type AppBackendClientPort } from './backend-client';
 import { getDaemonStatus, refreshDaemon, setDaemonEnabled } from './daemon-launch-agent';
 import { ensureCurrentDaemonForStartup } from './daemon-startup-maintenance';
-import { isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
+import { appRpcErrorCodes, isAppSnapshotGetResult, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 import { decodeAppSnapshot, isClientState, type DecodedAppSnapshot } from '@workspace/core/snapshot-guards';
 import { continuesEventSequence } from '@workspace/core/event-sequence';
 import { applyMainEventToSnapshot, replaceAppSnapshot } from '@workspace/core/snapshot';
@@ -117,6 +117,8 @@ export class AppController {
   private reconnectAttempt = 0;
   private shuttingDown = false;
   private connectionState: ProviderConnectionState = { status: 'connecting' };
+  /** Why the daemon cannot open its home, while it waits for the user to restore a backup or quit. */
+  private storeRecovery: StoreRecovery | null = null;
   /** Debug fixtures live in one window's renderer, so their menu state follows that window. */
   private readonly debugFlags = new WeakMap<BrowserWindow, DebugFlags>();
   private readonly pendingDeepLinkCommands: AppCommand[] = [];
@@ -645,6 +647,8 @@ export class AppController {
       this.appLifecycle.quit();
     });
 
+    ipc.handle(ipcChannels.storeRecovery, () => this.storeRecovery);
+    ipc.handle(ipcChannels.restoreStoreBackup, (_event, name: string) => this.restoreStoreBackup(name));
     ipc.handle(ipcChannels.restartApp, () => this.restartApp());
     ipc.handle(ipcChannels.reloadRenderer, (event) => this.reloadRenderer(this.windowOf(event)));
     ipc.handle(ipcChannels.getWindowContext, (event) => this.getWindowContext(this.windowOf(event)));
@@ -1068,6 +1072,7 @@ export class AppController {
       this.handleTelemetryActivity();
       logMain('daemon', 'connected to backend', { version: health.version, pid: health.pid });
     } catch (error) {
+      if (this.awaitStoreRecovery(error)) return;
       this.handleBackendDisconnect(error instanceof Error ? error : new Error(String(error)));
       warnMain('daemon', 'failed to connect to backend process', {
         detail: error instanceof Error ? error.message : String(error),
@@ -2308,6 +2313,7 @@ export class AppController {
       this.emitSnapshotToRenderer(snapshot);
       logMain('daemon', 'reconnected to backend', { version: health.version, pid: health.pid });
     } catch (error) {
+      if (this.awaitStoreRecovery(error)) return;
       this.reconnectAttempt += 1;
       warnMain('daemon', 'backend reconnect failed', {
         attempt: this.reconnectAttempt,
@@ -2316,6 +2322,36 @@ export class AppController {
       this.setConnectionState({ status: 'reconnecting', detail: error instanceof Error ? error.message : String(error) });
       this.scheduleBackendReconnect();
     }
+  }
+
+  /**
+   * A daemon that cannot open its home keeps running and says why: retrying cannot help, so the windows show the
+   * reason and the backup it offers instead. Answers whether that is what happened.
+   */
+  private awaitStoreRecovery(error: unknown): boolean {
+    const { code, data } = (error ?? {}) as { code?: unknown; data?: StoreRecovery };
+    if (code !== appRpcErrorCodes.storeUnavailable || !data) return false;
+    warnMain('daemon', 'store unavailable', { file: data.file, backup: data.backup?.name ?? null });
+    this.setStoreRecovery(data);
+    this.setConnectionState({ status: 'error', detail: data.message });
+    return true;
+  }
+
+  private setStoreRecovery(recovery: StoreRecovery | null): void {
+    this.storeRecovery = recovery;
+    this.emitClientEvent({ type: 'client.storeRecoveryRequired', payload: recovery });
+  }
+
+  private async restoreStoreBackup(name: string): Promise<void> {
+    if (!this.backendClient || !this.storeRecovery) return;
+    try {
+      await this.backendClient.request(backendMethods.storeRestoreBackup, { backup: name });
+    } catch (error) {
+      if (this.awaitStoreRecovery(error)) return;
+      throw error;
+    }
+    this.setStoreRecovery(null);
+    await this.initializeBackendClient();
   }
 
   private setConnectionState(state: ProviderConnectionState): void {

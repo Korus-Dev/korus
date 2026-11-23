@@ -11,7 +11,7 @@ import { updateSettingsInSnapshot } from '@workspace/core/settings';
 import { ipcChannels } from '@workspace/core/ipc';
 import type { AppBackendClientPort } from '../backend-client';
 import type { ClientState } from '@workspace/core/contracts';
-import type { AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
+import { appRpcErrorCodes, type AppBackendEvent } from '@workspace/core/backend-protocol/rpc';
 
 const native = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => any>(),
@@ -1191,6 +1191,28 @@ describe('controller desktop lifecycle', () => {
     expect(unsubscribeConnection).toHaveBeenCalledOnce();
     expect(powerMonitor.listenerCount('on-ac')).toBe(0);
     expect(powerMonitor.listenerCount('on-battery')).toBe(0);
+  });
+
+  it('shows why the daemon cannot open its home instead of retrying, and connects once the offered backup is restored', async () => {
+    const { controller, provider, window } = setup();
+    controller.createWindow();
+    const recovery = { file: 'roster.json', reason: 'newer' as const, message: 'roster.json uses schema 99', backup: { name: 'roster-v8-2026-11-22T10-00-00.000Z.json', createdAt: '2026-11-22T10:00:00.000Z' } };
+    provider.health.mockRejectedValueOnce(Object.assign(new Error(recovery.message), { code: appRpcErrorCodes.storeUnavailable, data: recovery }));
+
+    await controller.initialize();
+
+    expect(window.webContents.send).toHaveBeenCalledWith(ipcChannels.event, expect.objectContaining({ type: 'client.storeRecoveryRequired', payload: recovery }));
+    expect(await invoke(ipcChannels.storeRecovery)).toStrictEqual(recovery);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(provider.start).toHaveBeenCalledOnce();
+
+    const daemon = provider.request.getMockImplementation()!;
+    provider.request.mockImplementation(async (method: string, params?: unknown) => method === backendMethods.storeRestoreBackup ? { restored: true } : daemon(method, params));
+    await invoke(ipcChannels.restoreStoreBackup, recovery.backup.name);
+
+    expect(provider.request).toHaveBeenCalledWith(backendMethods.storeRestoreBackup, { backup: recovery.backup.name });
+    expect(await invoke(ipcChannels.storeRecovery)).toBeNull();
+    expect(await invoke(ipcChannels.getSnapshotState)).toMatchObject({ connection: { status: 'connected' } });
   });
 
   it('subscribes to backend events when startup first fails and the scheduled retry connects', async () => {

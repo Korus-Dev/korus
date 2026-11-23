@@ -1057,6 +1057,17 @@ export const messages = {
       label: 'Label',
       allLabels: 'All labels',
     },
+    storeRecovery: {
+      newerTitle: 'Your data was saved by a newer version of {product}',
+      unreadableTitle: '{product} can’t read your data',
+      backupAvailable: 'A backup from {date} is available.',
+      laterWorkLost: 'Restoring it loses anything you did after that time.',
+      update: 'Update {product} to open it.',
+      noBackup: 'No backup is available to restore.',
+      restore: 'Restore backup',
+      restoring: 'Restoring…',
+      quit: 'Quit',
+    },
     auth: {
       signInTitleProduct: `${product.name},`,
       signInTitleDetailFirst: 'a home for your',

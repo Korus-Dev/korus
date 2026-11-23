@@ -1,3 +1,5 @@
+import { StoreFormatError } from './persistence/store-format';
+import { StoreRecoveryServer } from './store-recovery-server';
 import { product } from '@workspace/core/product';
 import { backendMethods } from '@workspace/core/backend-protocol/methods';
 import { appRpcErrorCodes, createAppRpcError, createAppRpcResult, isAppRpcRequest } from '@workspace/core/backend-protocol/rpc';
@@ -272,7 +274,8 @@ async function withHomeLock(start: (lock: HomeLock | null) => Promise<void>, req
 }
 
 async function runStdio(homeLock: HomeLock | null): Promise<void> {
-  let runtime: DaemonRuntime;
+  let runtime: DaemonRuntime | null = null;
+  let recovery: StoreRecoveryServer | null = null;
   // A desktop that starts this process reads compact snapshots. It says so at launch, because the daemon publishes
   // snapshots while it starts, before any request of the desktop could reach it. The setting is not passed on.
   const compactSnapshots = process.env.APP_STDIO_SNAPSHOTS === 'compact';
@@ -284,14 +287,26 @@ async function runStdio(homeLock: HomeLock | null): Promise<void> {
     onOutputBackpressure: (details) => debugMain('stdio', 'output buffered', details),
     onOutputDrain: (details) => debugMain('stdio', 'output drained', details),
     onOutputOverflow: (details) => warnMain('stdio', 'output buffer limit exceeded', details),
-    onMessage: (message) => runtime.server.handleMessage(message),
+    onMessage: (message) => recovery ? recovery.handle(message) as ReturnType<DaemonRuntime['server']['handleMessage']> : runtime!.server.handleMessage(message),
   });
-  runtime = await createDaemonRuntime({
-    version: DAEMON_VERSION,
-    features: runtimeFeatures(),
-    requestClient: (method, params) => stdio.request(method, params),
-    emitEvent: (event) => stdio.notify(backendMethods.backendEventNotify, event),
-  });
+  const start = async () => {
+    runtime = await createDaemonRuntime({
+      version: DAEMON_VERSION,
+      features: runtimeFeatures(),
+      requestClient: (method, params) => stdio.request(method, params),
+      emitEvent: (event) => stdio.notify(backendMethods.backendEventNotify, event),
+    });
+    const started = runtime;
+    return (message: Parameters<DaemonRuntime['server']['handleMessage']>[0]) => started.server.handleMessage(message);
+  };
+  try {
+    await start();
+  } catch (error) {
+    // A home this build cannot open is the user's to recover: the desktop shows why and offers the newest backup.
+    if (!(error instanceof StoreFormatError)) throw error;
+    warnMain('startup', 'store unavailable', { message: error.message });
+    recovery = await StoreRecoveryServer.open(backendHomeDir(), error, start);
+  }
 
   let stopping = false;
   const stop = async () => {
@@ -300,7 +315,7 @@ async function runStdio(homeLock: HomeLock | null): Promise<void> {
     }
     stopping = true;
     stdio.stop();
-    await runtime.stop();
+    await runtime?.stop();
     await flushBackendLogs();
     await homeLock?.release();
   };

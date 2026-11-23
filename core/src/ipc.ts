@@ -191,6 +191,8 @@ export const ipcChannels = {
   listLocalSkins: 'skins:local:list',
   deleteLocalSkin: 'skins:local:delete',
   quit: 'app:quit',
+  storeRecovery: 'app:store:recovery',
+  restoreStoreBackup: 'app:store:restore-backup',
   restartApp: 'app:restart',
   reloadRenderer: 'app:renderer:reload',
   getWindowContext: 'window:context:get',

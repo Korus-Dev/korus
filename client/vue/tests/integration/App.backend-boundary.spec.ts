@@ -18,6 +18,26 @@ function planAction(wrapper: VueWrapper, label: 'Approve' | 'Cancel') {
 }
 
 describe('Unified backend → mounted application', () => {
+  it('offers the backup of a home the daemon cannot open instead of waiting to connect, and restores it', async () => {
+    const { api, emit } = installBackendFixture(createInitialSnapshot());
+    const recovery = { file: 'roster.json', reason: 'newer' as const, message: 'roster.json uses schema 99',
+      backup: { name: 'roster-v8-2026-11-22T15-30-00.000Z.json', createdAt: '2026-11-22T15:30:00.000Z' } };
+    api.getSnapshotState.mockRejectedValueOnce(new Error('daemon snapshot is not available.'));
+    api.storeRecovery.mockResolvedValueOnce(recovery);
+    api.restoreStoreBackup.mockResolvedValueOnce(undefined);
+    const wrapper = mount(App);
+    try {
+      await flushPromises();
+      expect(wrapper.text()).toContain('saved by a newer version');
+      await wrapper.findAll('button').find(button => button.text() === 'Restore backup')!.trigger('click');
+      expect(api.restoreStoreBackup).toHaveBeenCalledExactlyOnceWith(recovery.backup.name);
+
+      emit({ type: 'client.storeRecoveryRequired', payload: null });
+      await flushPromises();
+      expect(wrapper.text()).not.toContain('saved by a newer version');
+    } finally { wrapper.unmount(); }
+  });
+
   it('shows a history error after a startup event is covered by the roster, and Retry loads the transcript', async () => {
     const snapshot = createInitialSnapshot();
     const agent = snapshot.agents[0]!;

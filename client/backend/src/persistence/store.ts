@@ -187,7 +187,7 @@ export class AppStateStore {
       throw desktopUpgradeError(rosterFile);
     }
     let settingsText = await readIfExists(this.absolute(settingsFile));
-    if (settingsText === null) throw new StoreFormatError(`${settingsFile} is missing. Restore it from the ${backupsDirectory} folder.`);
+    if (settingsText === null) throw new StoreFormatError(`${settingsFile} is missing. Restore it from the ${backupsDirectory} folder.`, settingsFile);
     const settingsEnvelope = parseStoreFile(settingsFile, settingsText);
     const migratedSettings = migrateData(settingsFile, settingsEnvelope.data, settingsEnvelope.schemaVersion, storeSchemaVersion, fileMigrations.settings);
     const files: StoreFiles = {

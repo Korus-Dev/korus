@@ -232,6 +232,9 @@ export function createClientApiMock(
     listLocalSkins: unscripted<'listLocalSkins'>('listLocalSkins'),
     deleteLocalSkin: unscripted<'deleteLocalSkin'>('deleteLocalSkin'),
     quit: unscripted<'quit'>('quit'),
+    // A daemon that opens its home has nothing to recover.
+    storeRecovery: vi.fn<NonNullable<AppApi['storeRecovery']>>().mockResolvedValue(null),
+    restoreStoreBackup: unscripted<'restoreStoreBackup'>('restoreStoreBackup'),
     setMenuBarVisible: vi.fn<AppApi['setMenuBarVisible']>().mockResolvedValue(undefined),
     restartApp: unscripted<'restartApp'>('restartApp'),
     reloadRenderer: unscripted<'reloadRenderer'>('reloadRenderer'),

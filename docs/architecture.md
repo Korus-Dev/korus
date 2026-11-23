@@ -453,7 +453,11 @@ Rules:
 
 - Roster, settings, tasks, document workspaces and visualizations use `{ schemaVersion, writtenBy, data }`. A build refuses to
   read or rewrite a newer `schemaVersion`; a file that fails to parse stops startup rather
-  than becoming empty (except an unreadable visualization, which is skipped).
+  than becoming empty (except an unreadable visualization, which is skipped). The stdio
+  daemon then stays up in recovery mode: every request fails with `storeUnavailable`,
+  naming the file and the newest backup of it this build can read, and
+  `store/backup/restore` puts that backup in place and starts the daemon. A failure in a
+  file `roster.json` names (Mission documents, a design) restores `roster.json`.
 - An agent's design workspaces stay in `roster.json` with only their state and the id
   of their design; the design itself is in `designs/<id>.json`. A save writes the
   design files before `roster.json` and then deletes those it no longer names. A

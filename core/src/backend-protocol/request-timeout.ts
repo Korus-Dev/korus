@@ -176,6 +176,8 @@ const requestTimeoutByMethod = {
   [backendMethods.agentWorkItemAssignmentDelete]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.backendEventNotify]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.backendHealthGet]: QUICK_REQUEST_TIMEOUT_MS,
+  // Restoring starts the daemon: as long as any startup.
+  [backendMethods.storeRestoreBackup]: LONG_RUNNING_REQUEST_TIMEOUT_MS,
   [backendMethods.clientExternalOpen]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.clientSpokenAnnouncementQueue]: QUICK_REQUEST_TIMEOUT_MS,
   [backendMethods.clientBrowserOpen]: IO_REQUEST_TIMEOUT_MS,

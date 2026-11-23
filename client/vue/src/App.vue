@@ -198,6 +198,7 @@
     @update:composer-attachments="updateComposerAttachments($event.agentId, $event.attachments)"
     @install-update="installUpdate"
   />
+  <StoreRecoveryLanding v-else-if="storeRecovery" :recovery="storeRecovery" :restore="restoreStoreBackup" :quit="quit" />
   <CodexLoginLanding v-else variant="connecting" :connection-status="startupDelayed ? $t('auth.retryingDaemon') : undefined" />
   <AgentCloseDialog
     :visible="pendingAgentClose !== null"
@@ -257,6 +258,7 @@ import AppShell from './components/AppShell.vue';
 import JoinSharedChatDialog from './components/JoinSharedChatDialog.vue';
 import { useGuestNavigation } from './guest-navigation';
 import type { AgentClosePreview } from '@workspace/core/agent-close';
+import StoreRecoveryLanding from './components/StoreRecoveryLanding.vue';
 import CodexLoginLanding from './components/CodexLoginLanding.vue';
 import type { AgentConversationActions } from './components/use-agent-conversation';
 import AgentCloseDialog from './components/AgentCloseDialog.vue';
@@ -290,6 +292,8 @@ const {
   isLoadingOlderHistory,
   isSending,
   connectionState,
+  storeRecovery,
+  restoreStoreBackup,
   answeredClientRequestIds,
   agentFiles,
   loadAgentFiles,

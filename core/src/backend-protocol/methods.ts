@@ -137,6 +137,7 @@ export const backendMethods = {
   agentWorkItemAssignmentDelete: 'agent/workItem/assignment/delete',
   backendEventNotify: 'backend/event/notify',
   backendHealthGet: 'backend/health/get',
+  storeRestoreBackup: 'store/backup/restore',
   clientExternalOpen: 'client/external/open',
   clientSpokenAnnouncementQueue: 'client/spokenAnnouncement/queue',
   clientBrowserOpen: 'client/browser/open',

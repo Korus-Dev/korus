@@ -280,7 +280,7 @@ Search by behavior first.
 | Animate a pane collapsing or expanding | `PaneTransition` (wrap a single `v-if` or `v-show` pane) | `client/vue/src/shared/` |
 | Workspace header / body containment | `WorkspaceHeader`, `.workspace-header__title`, `.workspace-body` | `client/vue/src/shared/`, `styles/base.css` |
 | Generated confirmation, alert and prompt dialogs | `appMessageBox` (preserves toolkit options; opts generated buttons into shared states) | `client/vue/src/shared/dialog/` |
-| Dialog chrome and footer actions | `.app-dialog`, `.app-button` (add `.app-button--small` for compact actions) | `client/vue/src/styles/base.css` |
+| Dialog chrome and footer actions | `.app-dialog`, `.app-button` (add `.app-button--small` for compact actions, `.app-button--large` for the primary actions of a full-window screen) | `client/vue/src/styles/base.css` |
 | Form dialogs | `FormDialog` | `client/vue/src/shared/dialog/` |
 | Form structure: card, label-left rows, label-above fields | `FormSection`, `FormRow`, `FormField` | `client/vue/src/shared/form/` |
 | One choice among a few, as segmented buttons | `AppSegmented` (`label` is the accessible name; `size` is `default`, `small` or `compact`; its fill is `--color-control-fill`, so it reads on any surface and no caller styles `el-segmented`) | `client/vue/src/shared/` |

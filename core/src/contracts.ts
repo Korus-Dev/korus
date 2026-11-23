@@ -671,7 +671,7 @@ export type RendererSnapshotState = {
   connection: ProviderConnectionState;
 };
 
-export type { MainToRendererEvent, BackendPublishedEvent, BackendDomainEvent, ConversationActivityEvent, ClientEffectEvent, ClientTransportEvent } from './contracts/events';
+export type { MainToRendererEvent, BackendPublishedEvent, BackendDomainEvent, ConversationActivityEvent, ClientEffectEvent, ClientTransportEvent, StoreRecovery } from './contracts/events';
 
 export type CelebrationKind = 'confetti' | 'stars' | 'shapes' | 'schoolPride';
 
@@ -1030,6 +1030,10 @@ export type AppApi = {
   listLocalSkins?(): Promise<import('./custom-themes').LocalSkin[]>;
   deleteLocalSkin?(name: string): Promise<void>;
   quit(): Promise<void>;
+  /** Desktop only: why the daemon cannot open its home, and the backup it offers; null while it can. */
+  storeRecovery?(): Promise<import('./contracts/events').StoreRecovery | null>;
+  /** Desktop only: restores the backup `storeRecovery` offered, then connects to the daemon. */
+  restoreStoreBackup?(name: string): Promise<void>;
   restartApp(): Promise<void>;
   reloadRenderer(): Promise<void>;
   /** Desktop windows only: this window's identity, initial view state and the shared native owners and drafts. */

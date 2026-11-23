@@ -490,6 +490,7 @@ describe('useAppState', () => {
       'browser.annotationCreated',
       'client.celebrationRequested',
       'client.connectionChanged',
+      'client.storeRecoveryRequired',
       'provider.authenticationChanged',
       'workspace.fileActivityDetected',
       'git.branchWorkProgress',

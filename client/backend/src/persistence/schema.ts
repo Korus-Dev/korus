@@ -109,5 +109,5 @@ export function parseData<T>(file: string, schema: z.ZodType<T>, data: unknown):
   if (result.success) return result.data;
   const issue = result.error.issues[0];
   const where = issue?.path.length ? ` at ${issue.path.join('.')}` : '';
-  throw new StoreFormatError(`${file} is invalid${where}: ${issue?.message ?? 'unknown problem'}. Restore it from the backups folder.`);
+  throw new StoreFormatError(`${file} is invalid${where}: ${issue?.message ?? 'unknown problem'}. Restore it from the backups folder.`, file);
 }

@@ -170,7 +170,7 @@ export class BackendRpcSession {
     clearTimeout(pending.timeout);
     this.pending.delete(response.id);
     if ('error' in response) {
-      pending.reject(Object.assign(new Error(response.error.message), { data: response.error.data }));
+      pending.reject(Object.assign(new Error(response.error.message), { code: response.error.code, data: response.error.data }));
       return;
     }
     pending.resolve(response.result);

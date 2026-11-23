@@ -9,6 +9,7 @@ export const snapshotEventOwnership = {
   'provider.authenticationChanged': 'renderer',
   'provider.statusChanged': 'runtime',
   'client.connectionChanged': 'renderer',
+  'client.storeRecoveryRequired': 'renderer',
   'snapshot.updated': 'runtime',
   'account.rateLimitsUpdated': 'runtime',
   'models.changed': 'renderer',

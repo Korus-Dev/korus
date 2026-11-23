@@ -13,7 +13,7 @@ import type { PlanReviewResolution } from '@workspace/core/plan-review';
 import type { AgentGitBranchInput, AgentGitCommitInput, AgentGitMessageGenerationInput, AgentGitMessageGenerationResult, AgentGitPullRequestInput, AgentGitPushInput, AgentGitStageInput, AgentGitUpdateFromBaseInput, AgentGitUpdateFromBaseResult, AgentGitWorkflow } from '@workspace/core/contracts';
 import type { AgentCreationProgress, WorkProviderKind, WorkSource } from '@workspace/core/contracts';
 import type { MissionImplementationStartProgress } from '@workspace/core/mission-execution';
-import type { HarnessProvider, AddSshConnectionInput, Agent, AgentFileActivity, AgentFilePreviewResult, ApprovalPreset, AppPluginStatus, AppSnapshot, ProviderApprovalDecision, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, DaemonStatus, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DuplicateAgentOptions, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, RendererMessage, RendererSnapshotState, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkItem } from '@workspace/core/contracts';
+import type { HarnessProvider, StoreRecovery, AddSshConnectionInput, Agent, AgentFileActivity, AgentFilePreviewResult, ApprovalPreset, AppPluginStatus, AppSnapshot, ProviderApprovalDecision, ProviderApprovalScope, ProviderCapabilities, ProviderCommandSummary, ProviderConnectionState, ProviderConversationRef, DaemonStatus, CodexResourceSharingStatus, ConversationListInput, ConversationResumeTarget, ConversationSummary, CreateAgentInput, CreateAutomationInput, CreateQuickChatInput, CreateSourceWorktreeInput, CreateTeamInput, DuplicateAgentOptions, AutomationLocation, MainToRendererEvent, MoveAgentToTeamInput, OpenInApplication, OpenInApplicationCatalog, RendererMessage, RendererSnapshotState, ReorderAgentsInput, ReorderRepositoriesInput, ReorderTeamsInput, RendererSendPromptOptions, SetCodexResourceSharingInput, SidePanelRequest, SourceFolderListing, SourceFolderListInput, SshHostCandidate, Team, UpdateAgentInput, UpdateAutomationInput, UpdateRemoteConnectionInput, UpdateSettingsInput, UpdateTeamInput, WorkItem } from '@workspace/core/contracts';
 import { selectAgent as selectAgentInSnapshot } from '@workspace/core/agent-manager';
 import { selectTeam as selectTeamInSnapshot } from '@workspace/core/team-manager';
 import { createEmptySnapshot } from '@workspace/core/snapshot-construction';
@@ -54,6 +54,8 @@ const threadFlagState = createAgentThreadFlagState({ getSnapshot: () => snapshot
 const hasLoadedSnapshot = ref(false);
 const isLoading = ref(false);
 const connectionState = ref<ProviderConnectionState>({ status: 'connecting' });
+/** Why the daemon cannot open its home, and the backup it offers; null while it can. */
+const storeRecovery = ref<StoreRecovery | null>(null);
 const sendingAgentIds = ref(new Set<string>());
 const composerStatesByAgentId = ref<Record<string, ComposerState>>({});
 const composerAttachmentsByAgentId = ref<Record<string, NativeAttachment[]>>({});
@@ -493,6 +495,8 @@ export function useAppState() {
     const markLoad = (stage: string) => traceConversationLoad && console.warn('[conversation-load] ' + JSON.stringify({ layer: 'renderer', stage,
       rendererId: performance.timeOrigin, agentId: snapshot.value.activeAgentId, at: performance.timeOrigin + performance.now(), elapsedMs: performance.now() - loadStarted }));
     markLoad('startup.snapshot-request');
+    // A daemon that cannot open its home never answers with a snapshot: what it offers instead is read on its own.
+    void appApi.storeRecovery?.().then(recovery => { storeRecovery.value = recovery; }, () => undefined);
 
     resetCatalogStateIfSourceChanged(appApi);
     resetUnreadAgentIds();
@@ -1397,6 +1401,10 @@ export function useAppState() {
     }
   }
 
+  async function restoreStoreBackup(name: string): Promise<void> {
+    await appApi?.restoreStoreBackup?.(name);
+  }
+
   async function quit(): Promise<void> {
     if (appHostCapabilities.appLifecycle) await appApi?.quit?.();
   }
@@ -1642,6 +1650,8 @@ export function useAppState() {
     isLoading,
     hasLoadedSnapshot,
     connectionState,
+    storeRecovery,
+    restoreStoreBackup,
     isActiveAgentHistoryFailed,
     isHydratingActiveAgentHistory,
     retryActiveAgentHistory,
@@ -2057,6 +2067,7 @@ function handleMainEvent(event: MainToRendererEvent, adoptSnapshot = true): void
       connectionState.value = { status: 'error', detail: error instanceof Error ? error.message : String(error) };
     });
   }
+  if (event.type === 'client.storeRecoveryRequired') storeRecovery.value = event.payload;
   if (event.type === 'client.connectionChanged') {
     const wasConnected = connectionState.value.status === 'connected';
     connectionState.value = event.payload;
@@ -2093,6 +2104,7 @@ function recoverConversationsAfterRepair(): void {
 function handleRendererOwnedMainEvent(event: RendererOnlySnapshotEvent): void {
   switch (event.type) {
     case 'client.connectionChanged':
+    case 'client.storeRecoveryRequired':
     case 'conversation.shareChanged':
     case 'git.branchWorkProgress':
     case 'git.operationProgress':
