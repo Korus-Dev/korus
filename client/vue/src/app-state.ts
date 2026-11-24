@@ -1276,7 +1276,7 @@ export function useAppState() {
 
     adoptBackgroundSnapshot(await appApi.updateAgent(input));
     if (input.selection?.provider) synchronizeComposerSelectionForAgent(input.id);
-    await loadActiveAgentCatalogs(input.id);
+    if (input.pinned === undefined || input.selection !== undefined) await loadActiveAgentCatalogs(input.id);
   }
 
   async function updateSettings(input: UpdateSettingsInput): Promise<void> {

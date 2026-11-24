@@ -9,7 +9,7 @@ beforeAll(async () => {
 });
 afterAll(() => fixture?.close());
 
-test('activity disclosure and mark-unread affordances respond to hover and keyboard focus', async () => {
+test('activity disclosure and row menus respond to hover and keyboard focus', async () => {
   const errors = await fixture.run('controls', async page => {
     await page.evaluate(() => window.showActivity());
     await page.addStyleTag({ content: '.agent-sidebar__activity-time{transition:none!important}' });
@@ -18,18 +18,36 @@ test('activity disclosure and mark-unread affordances respond to hover and keybo
     const driver = await unreadRow.locator('.agent-sidebar__engine').boundingBox();
     const dot = await unreadRow.locator('.agent-sidebar__activity-unread').boundingBox();
     assert.ok(dot.x - driver.x - driver.width >= 8, 'driver and unread dot have a clear gap');
-    const markUnread = page.getByRole('button', { name: 'Mark unread', exact: true }).first();
-    const idleRow = markUnread.locator('..');
-    assert.equal(await markUnread.evaluate(el => getComputedStyle(el).opacity), '0');
-    await idleRow.hover();
-    assert.equal(await markUnread.evaluate(el => getComputedStyle(el).opacity), '1');
-    assert.equal(await idleRow.locator('.agent-sidebar__activity-time').evaluate(el => getComputedStyle(el).opacity), '0');
-    await markUnread.hover();
-    await page.getByRole('tooltip', { name: 'Mark unread', exact: true }).waitFor();
+    const assertMenuReplacesAge = async (row) => {
+      const indicator = row.locator('.agent-sidebar__activity-indicator--age');
+      const trigger = row.getByRole('button', { name: 'Agent actions' });
+      const ageSlot = await indicator.boundingBox();
+      const menuSlot = await trigger.boundingBox();
+      assert.ok(Math.abs(menuSlot.x + menuSlot.width - ageSlot.x - ageSlot.width) <= 1,
+        'the age and menu share the same right edge');
+      await row.hover();
+      assert.equal(await indicator.boundingBox(), null, 'the age releases its space while the menu is visible');
+      const engine = row.locator('.agent-sidebar__engine');
+      const engineSlot = await engine.boundingBox();
+      const iconGap = await engine.evaluate(el => parseFloat(getComputedStyle(el).marginLeft));
+      assert.ok(Math.abs(menuSlot.x - engineSlot.x - engineSlot.width - iconGap) <= 1,
+        'the overflow and engine icons use the normal trailing icon gap');
+    };
+    const idleRow = page.locator('[data-activity-group="idle"] .agent-sidebar__agent-row').first();
+    const actions = idleRow.locator('.agent-sidebar__activity-actions');
+    const trigger = idleRow.getByRole('button', { name: 'Agent actions' });
+    const actionOpacity = () => actions.evaluate(el => getComputedStyle(el).opacity);
+    assert.equal(await actionOpacity(), '0');
+    assert.equal(await idleRow.locator('.agent-sidebar__activity-indicator--age').boundingBox(), null,
+      'a hidden Idle age takes no space');
+    await page.locator('[data-activity-group="idle"] header').hover();
+    await assertMenuReplacesAge(idleRow);
+    assert.equal(await actionOpacity(), '1');
     await page.mouse.move(1190, 850);
-    await markUnread.focus();
-    assert.equal(await markUnread.evaluate(el => getComputedStyle(el).opacity), '1');
-    await markUnread.press('Enter');
+    await trigger.focus();
+    assert.equal(await actionOpacity(), '1');
+    await trigger.press('Enter');
+    await page.getByRole('menuitem', { name: 'Mark unread', exact: true }).press('Enter');
     assert.equal((await page.evaluate(() => window.markedUnread)).unread, true);
     assert.equal(await page.evaluate(() => window.selectedAgent), null, 'marking unread does not open the chat');
     await page.waitForFunction(() => document.getAnimations().every(animation =>
@@ -37,6 +55,10 @@ test('activity disclosure and mark-unread affordances respond to hover and keybo
     const group = page.locator('[data-activity-group="working"]');
     const toggle = group.getByRole('button', { name: 'Working', exact: true });
     const opacity = selector => group.locator(selector).evaluate(el => getComputedStyle(el).opacity);
+    await page.mouse.move(1190, 850);
+    assert.equal(await opacity('.agent-sidebar__activity-time'), '1');
+    await assertMenuReplacesAge(group.locator('.agent-sidebar__agent-row'));
+    assert.equal(await opacity('.agent-sidebar__activity-actions'), '1');
     await page.mouse.move(1190, 850);
     assert.equal(await opacity('.agent-sidebar__activity-chevron'), '0');
     const before = await toggle.boundingBox();

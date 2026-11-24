@@ -19,6 +19,7 @@ const agentFieldPolicy = {
   delegationUserInstructions: 'persisted',
   pullRequest: 'persisted',
   sessionKind: 'persisted',
+  pinned: 'persisted',
   sharedConversation: 'persisted',
   name: 'persisted',
   conversationTitle: 'persisted',

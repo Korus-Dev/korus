@@ -14,6 +14,15 @@ function tooltipContents(wrapper: VueWrapper): string[] {
   return wrapper.findAllComponents({ name: 'ElTooltip' }).map(tooltip => String(tooltip.props('content')));
 }
 
+async function clickActivityAction(label: string): Promise<void> {
+  await flushPromises();
+  const action = [...document.body.querySelectorAll<HTMLButtonElement>('.app-menu-button__menu [role="menuitem"]')]
+    .find(item => item.textContent?.trim() === label && !item.closest('[aria-hidden="true"]'));
+  expect(action).toBeDefined();
+  action!.click();
+  await flushPromises();
+}
+
 describe('AgentSidebar sessions', () => {
   it('edits an ordinary folder icon using its canonical file identity', async () => {
     const folder = { ...agents[0]!, id: 'notes', folder: '/src/notes folder', workspace: { kind: 'folder' as const, folder: '/src/notes folder', label: 'notes folder', updatedAt: '' } };
@@ -388,13 +397,11 @@ describe('AgentSidebar sessions', () => {
       { ...agents[0]!, status: { type: 'idle' } },
       { ...agents[0]!, id: 'running', status: { type: 'working' } },
     ], activeAgentId: agents[0]!.id, teamName: 'Workspace', allTeams: true } });
-    await wrapper.get('button[aria-label="Mark unread"]').trigger('click');
+    await wrapper.get('[data-activity-group="idle"] button[aria-label="Agent actions"]').trigger('click');
+    await clickActivityAction('Mark unread');
     expect(wrapper.emitted('select-agent')).toBeUndefined();
-    expect(tooltipContents(wrapper)).toContain('Mark unread');
-    expect(wrapper.find('[data-reorder-id="running"] + button[aria-label="Mark unread"]').exists()).toBe(false);
     for (const unread of [false, true]) {
       await wrapper.setProps({ unreadAgentIds: unread ? [agents[0]!.id] : [] });
-      expect(wrapper.find('button[aria-label="Mark unread"]').exists()).toBe(!unread);
       await wrapper.get(`.agent-sidebar__agent[data-reorder-id="${agents[0]!.id}"]`).trigger('contextmenu', { clientX: 80, clientY: 120 });
       const action = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.trim() === (unread ? 'Mark read' : 'Mark unread'));
       expect(action).toBeDefined();
@@ -405,6 +412,32 @@ describe('AgentSidebar sessions', () => {
       [{ agentId: agents[0]!.id, unread: true }],
       [{ agentId: agents[0]!.id, unread: true }], [{ agentId: agents[0]!.id, unread: false }],
     ]);
+  });
+
+  it('moves a pinned agent to the first section until it is unpinned', async () => {
+    const idle: Agent = { ...agents[0]!, status: { type: 'idle' }, createdAt: '2026-01-01T00:00:00Z' };
+    const waiting: Agent = { ...agents[1]!, status: { type: 'awaitingInput' } };
+    const wrapper = mount(AgentSidebar, { props: { agents: [idle, waiting], activeAgentId: null, teamName: 'Workspace', allTeams: true } });
+    const row = () => wrapper.get(`[data-reorder-id="${idle.id}"]`);
+    const openMenu = () => row().element.parentElement!.querySelector<HTMLButtonElement>('[aria-label="Agent actions"]')!.click();
+
+    expect(row().element.closest('[data-activity-group]')?.getAttribute('data-activity-group')).toBe('idle');
+    openMenu();
+    await clickActivityAction('Pin');
+    expect(wrapper.emitted('set-agent-pinned')).toStrictEqual([[{ agentId: idle.id, pinned: true }]]);
+    expect(wrapper.emitted('select-agent')).toBeUndefined();
+
+    await wrapper.setProps({ agents: [{ ...idle, pinned: true, status: { type: 'working' } }, waiting] });
+    expect(wrapper.find('[data-activity-group] header').text()).toBe('Pinned');
+    expect(wrapper.get('[data-activity-group="pinned"]').findAll('[data-reorder-id]').map(button => button.attributes('data-reorder-id'))).toStrictEqual([idle.id]);
+    expect(wrapper.findAll(`[data-reorder-id="${idle.id}"]`)).toHaveLength(1);
+    expect(row().find('[aria-label="Working"]').exists()).toBe(true);
+    openMenu();
+    await clickActivityAction('Unpin');
+    expect(wrapper.emitted('set-agent-pinned')).toStrictEqual([[{ agentId: idle.id, pinned: true }], [{ agentId: idle.id, pinned: false }]]);
+    await wrapper.setProps({ agents: [idle, waiting] });
+    expect(wrapper.find('[data-activity-group="pinned"]').exists()).toBe(false);
+    expect(row().element.closest('[data-activity-group]')?.getAttribute('data-activity-group')).toBe('idle');
   });
 
   // Rendered activity sorting, controlled aging and per-team preferences across remounts.

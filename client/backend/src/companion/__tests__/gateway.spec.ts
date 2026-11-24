@@ -123,11 +123,15 @@ describe('companion authorization gateway', () => {
     driverRequest.mockImplementationOnce(async () => { source.observe({ ...frame, occurredAt: 'now' } as AppBackendEvent); return agent.providerSession; });
     expect(JSON.parse(JSON.stringify(await f.gateway.request('phone', 'conversation.subscribe', phoneTarget)))).toStrictEqual(frame);
   });
-  it('keeps the released phone snapshot response unchanged when desktop feature labels are persisted', async () => {
+  it('keeps the released phone snapshot response unchanged when desktop feature labels and pins are persisted', async () => {
     const f = fixture();
     await f.pair();
     const before = await f.gateway.request('phone', 'snapshot.get', {});
-    f.port.workspace.mockResolvedValueOnce({ ...workspace, teams: workspace.teams.map(team => ({ ...team, featureLabels: { feat1: 'Account settings' } })) });
+    f.port.workspace.mockResolvedValueOnce({
+      ...workspace,
+      teams: workspace.teams.map(team => ({ ...team, featureLabels: { feat1: 'Account settings' } })),
+      agents: workspace.agents.map(agent => ({ ...agent, pinned: true })),
+    });
     expect(await f.gateway.request('phone', 'snapshot.get', {})).toStrictEqual(before);
     await expect(f.gateway.request('phone', 'feature/control', { type: 'delete', branch: 'feat1', confirmed: true })).rejects.toThrow();
   });

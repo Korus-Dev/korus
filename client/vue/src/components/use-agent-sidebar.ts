@@ -8,9 +8,9 @@ import { missionCreatedWorkspaces } from '@workspace/core/mission-execution';
 import { computed, reactive, ref, toRefs, markRaw } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Agent, OpenInApplication, OpenInApplicationCatalog, RemoteConnection } from '@workspace/core/contracts';
-import { projectWorkspaceSidebar, type SidebarActivity, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
+import { projectWorkspaceSidebar, type WorkspaceSidebarGroup, type WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import { formatCompactAge, formatElapsed } from '../shared/compact-age';
-import { BellIcon, CircleCheckIcon, ClockHour8Icon, ExternalLinkIcon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitPullRequestIcon, GitMainIcon, NetworkIcon, PencilIcon, Trash2Icon } from '../shared/icons/app-icons';
+import { BellIcon, CircleCheckIcon, ClockHour8Icon, ExternalLinkIcon, LoaderIcon, MoonIcon, FolderIcon, GitBranchIcon, GitPullRequestIcon, GitMainIcon, NetworkIcon, PencilIcon, PinIcon, Trash2Icon } from '../shared/icons/app-icons';
 import { appApi } from '../platform-api';
 import { useProviderChoices } from './provider-selection';
 import { providerDisplayName } from '@workspace/core/provider-driver';
@@ -20,7 +20,7 @@ import type { AgentContextMenuAction } from './AgentContextMenu.vue';
 import type { AppMenuItem } from '../shared/menu/app-menu';
 import { useListReorderDrag } from '../shared/use-list-reorder-drag';
 import { useRepositorySessionMenu } from './use-repository-session-menu';
-import { useAgentSidebarOrganization } from './use-agent-sidebar-organization';
+import { useAgentSidebarOrganization, type DesktopSidebarActivity } from './use-agent-sidebar-organization';
 import { useAgentSidebarMotion } from './use-agent-sidebar-motion';
 import ScrollHintRows from './ScrollHintRows.vue';
 import type { AgentSidebarProps, AgentSidebarEmit, SidebarRepositoryTarget } from './agent-sidebar-contracts';
@@ -37,7 +37,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   const { t } = useI18n();
 
   const missionsCollapsed = ref(false);
-  const activityIcons = markRaw({ attention: BellIcon, recent: CircleCheckIcon, working: LoaderIcon, idle: MoonIcon });
+  const activityIcons = markRaw({ pinned: PinIcon, attention: BellIcon, recent: CircleCheckIcon, working: LoaderIcon, idle: MoonIcon });
   const organizationMenuItems = computed<AppMenuItem[]>(() => [
     { id: 'activity', type: 'radio', checked: organizationMode.value === 'activity', label: t('sidebar.activity'), icon: BellIcon },
     { id: 'repository', type: 'radio', checked: organizationMode.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
@@ -85,7 +85,7 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
     label: activity => t(`sidebar.activityGroups.${activity}`),
   });
   const organizationMode = organization.mode;
-  const activityGroups = computed(() => workspaceGroups.value.filter((group): group is typeof group & { activity: SidebarActivity } => !!group.activity));
+  const activityGroups = computed(() => workspaceGroups.value.filter((group): group is typeof group & { activity: DesktopSidebarActivity } => !!group.activity));
   const quickChatGroup = computed(() => repositoryGroups.value.find(group => group.kind === 'quickChats') ?? null);
   const idleSortMenuItems = computed<AppMenuItem[]>(() => [
     { id: 'repository', type: 'radio', checked: organization.idleSort.value === 'repository', label: t('sidebar.repository'), icon: FolderIcon },
@@ -99,25 +99,27 @@ export function useAgentSidebar(props: AgentSidebarProps, emit: AgentSidebarEmit
   });
   const quickSwitchAgentIds = computed(() => workspaceGroups.value.flatMap(group => group.sessions)
     .sort((a, b) => a.quickSwitchIndex - b.quickSwitchIndex).map(session => session.agentId));
-  function showQuickSwitchShortcut(session: WorkspaceSidebarSession, activity?: SidebarActivity): boolean {
+  function showQuickSwitchShortcut(session: WorkspaceSidebarSession, activity?: DesktopSidebarActivity): boolean {
     return Boolean(props.quickSwitchShortcutsVisible && session.quickSwitchIndex < 9
       && (activity || (!isPullRequestFinished(session) && !session.isUnread)));
   }
-  function activityAge(agentId: string, activity: SidebarActivity | undefined): string | undefined {
+  function activityAge(agentId: string, elapsed: boolean): string | undefined {
     const agent = agentsById.value.get(agentId);
     if (!agent) return undefined;
     const last = agent.hasSubmittedPrompt && agent.lastActivityAt ? agent.lastActivityAt : agent.createdAt;
-    return activity === 'working' ? formatElapsed(last, organization.now.value)
+    return elapsed ? formatElapsed(last, organization.now.value)
       : formatCompactAge(last, organization.now.value, t('sidebar.justNow'));
   }
 
   /**
-   * The single trailing indicator of an activity row: Done and Idle show an unread dot or else an
-   * age; Needs input and Working always show one (how long it has waited or been working).
+   * The trailing activity indicator is an unread dot when idle or an age otherwise.
    */
-  function activityIndicator(session: WorkspaceSidebarSession, activity: SidebarActivity | undefined): { unread?: boolean; age?: string } {
+  function activityIndicator(session: WorkspaceSidebarSession, activity: DesktopSidebarActivity | undefined): { unread?: boolean; age?: string } {
     if (!activity) return {};
-    return (activity === 'recent' || activity === 'idle') && session.isUnread ? { unread: true } : { age: activityAge(session.agentId, activity) };
+    const working = session.status.type === 'working';
+    const needsInput = session.status.type === 'awaitingInput';
+    return session.isUnread && !working && !needsInput
+      ? { unread: true } : { age: activityAge(session.agentId, working) };
   }
   const activityContext = computed(() => new Map(repositoryGroups.value.flatMap(group => group.sessions.map(session => [session.agentId, group.label]))));
   /** Repository sessions only; the value is that repository's custom icon, when it has one. */

@@ -15,6 +15,8 @@ export {
   IconMessage2 as Message2Icon,
   IconMail as MailIcon,
   IconMailOpened as MailOpenedIcon,
+  IconPinned as PinIcon,
+  IconPinnedOff as PinOffIcon,
   IconForms as FormsIcon,
   IconArrowForwardUp as ArrowForwardUpIcon,
   IconAffiliate as AffiliateIcon,

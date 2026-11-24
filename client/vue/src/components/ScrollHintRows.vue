@@ -39,7 +39,7 @@ function publishSectionFloor(): void {
 function measure(): void {
   const element = scroller.value;
   if (!element) return;
-  const overflow = element.scrollHeight - element.clientHeight;
+  const overflow = rowScrollRange(element);
   // A few pixels of spill is layout noise, not rows worth a hint.
   const state = overflow < minOverflow ? { up: false, down: false }
     : { up: element.scrollTop > 1, down: element.scrollTop < overflow - 1 };
@@ -49,11 +49,17 @@ function measure(): void {
   emit('overflow', state);
 }
 
+function rowScrollRange(element: HTMLElement): number {
+  // Moving rows can inflate scrollHeight without changing the height of the list.
+  return Math.max(0, (content.value?.offsetHeight ?? 0) - element.clientHeight);
+}
+
 /** One page further down, or back to the top once the end is reached. */
 function scrollMore(): void {
   const element = scroller.value;
   if (!element) return;
-  if (element.scrollTop + element.clientHeight < element.scrollHeight - 1) element.scrollBy({ top: element.clientHeight, behavior: 'smooth' });
+  const remaining = rowScrollRange(element) - element.scrollTop;
+  if (remaining > 1) element.scrollBy({ top: Math.min(element.clientHeight, remaining), behavior: 'smooth' });
   else element.scrollTo({ top: 0, behavior: 'smooth' });
 }
 

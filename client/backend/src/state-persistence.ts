@@ -66,6 +66,7 @@ export type PersistedAgent = Pick<Agent, 'id' | 'name' | 'folder' | 'createdAt' 
   pullRequest?: Agent['pullRequest'];
   sessionKind?: Agent['sessionKind'];
   sharedConversation?: Agent['sharedConversation'];
+  pinned?: Agent['pinned'];
   conversationTitle?: string;
   avatar?: string;
   provider: HarnessProvider;
@@ -159,6 +160,7 @@ function persistedAgentFromSnapshot(agent: Agent, libraries?: RepositoryVisualiz
     ...(agent.pullRequest ? { pullRequest: { ...agent.pullRequest } } : {}),
     ...(agent.sessionKind ? { sessionKind: agent.sessionKind } : {}),
     ...(agent.sharedConversation ? { sharedConversation: agent.sharedConversation } : {}),
+    ...(agent.pinned ? { pinned: true } : {}),
     name: agent.name,
     ...(agent.conversationTitle ? { conversationTitle: agent.conversationTitle } : {}),
     avatar: agent.avatar,
@@ -425,6 +427,7 @@ function sanitizeAgent(value: unknown, libraries: RepositoryVisualizations): Age
     ...(pullRequest ? { pullRequest } : {}),
     ...(sessionKind ? { sessionKind } : {}),
     ...(shared ? { sharedConversation: { joinId: (shared as { joinId: string }).joinId } } : {}),
+    ...(value.pinned === true ? { pinned: true } : {}),
     name: typeof value.name === 'string' ? value.name : null,
     ...(typeof value.conversationTitle === 'string' && value.conversationTitle.trim()
       ? { conversationTitle: value.conversationTitle.trim() }

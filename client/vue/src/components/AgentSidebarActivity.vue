@@ -68,7 +68,8 @@
     </section>
 
     <nav ref="sessionList" class="agent-sidebar__list" :class="{ 'agent-sidebar__list--activity': organizationMode === 'activity' }" :aria-label="t('sidebar.workspaceSessions')">
-      <section v-if="!phoneScope && missions?.length" class="agent-sidebar__workspace-group agent-sidebar__section" data-group-kind="missions">
+      <template v-for="group in sections" :key="group?.id ?? 'missions'">
+      <section v-if="!group && !phoneScope && missions?.length" class="agent-sidebar__workspace-group agent-sidebar__section" data-group-kind="missions">
         <header class="agent-sidebar__workspace-header">
           <TargetArrowIcon class="agent-sidebar__workspace-icon" data-icon="target-arrow" aria-hidden="true" />
           <button
@@ -130,8 +131,7 @@
         </template>
       </section>
       <section
-        v-for="group in activityGroups"
-        :key="group.id"
+        v-else-if="group"
         class="agent-sidebar__workspace-group agent-sidebar__section"
         :data-group-kind="group.kind"
         :data-activity-group="group.activity"
@@ -237,18 +237,36 @@
                 :aria-label="t('sidebar.switchShortcut', { session: session.displayTitle, number: session.quickSwitchIndex + 1 })"
               ><span aria-hidden="true">⌘</span>{{ session.quickSwitchIndex + 1 }}</span>
 
+              <span
+                v-else-if="group.activity === 'pinned' && session.status.type === 'awaitingInput'"
+                class="agent-sidebar__input-needed agent-sidebar__pinned-status"
+                :aria-label="statusLabel(session.status.type)"
+              >{{ t('sidebar.input') }}</span>
+              <span
+                v-else-if="group.activity === 'pinned' && (session.status.type === 'working' || session.status.type === 'error')"
+                class="agent-sidebar__status agent-sidebar__pinned-status"
+                :data-status="session.status.type"
+                :aria-label="statusLabel(session.status.type)"
+                :title="statusLabel(session.status.type)"
+              />
             </ActivityAgentRow>
-            <el-tooltip
-              v-if="session.status.type === 'idle' && !session.isUnread && !session.shared && !showQuickSwitchShortcut(session, group.activity)"
-              :content="t('agents.menu.markUnread')" placement="right" :show-after="300"
-              :trigger="['hover', 'focus']" :trigger-keys="[]"
+            <AppMenuButton
+              v-if="!session.shared && !showQuickSwitchShortcut(session, group.activity)"
+              class="agent-sidebar__activity-actions"
+              :data-cleanup="isPullRequestFinished(session) || undefined"
+              :ariaLabel="t('sidebar.agentActions')"
+              :items="rowActions(session, group.activity === 'pinned')"
+              :width="160"
+              :persistent="false"
+              @select="selectRowAction(session.agentId, $event)"
             >
-              <button class="agent-sidebar__mark-unread agent-ui-interactive" type="button"
-                :aria-label="t('agents.menu.markUnread')" :data-cleanup="isPullRequestFinished(session) || undefined"
-                @click.stop="emit('set-agent-unread', { agentId: session.agentId, unread: true })">
-                <MailIcon aria-hidden="true" />
-              </button>
-            </el-tooltip>
+              <template #trigger="{ attrs }">
+                <button v-bind="attrs" class="agent-sidebar__activity-menu-trigger agent-ui-interactive" type="button"
+                  :aria-label="t('sidebar.agentActions')" :title="t('sidebar.agentActions')">
+                  <DotsVerticalIcon aria-hidden="true" />
+                </button>
+              </template>
+            </AppMenuButton>
             <el-tooltip
               v-if="isPullRequestFinished(session) && !(group.activity && showQuickSwitchShortcut(session, group.activity))"
               :content="pullRequestAttentionLabel(session)"
@@ -267,6 +285,7 @@
           </div>
         </ScrollHintRows>
       </section>
+      </template>
     </nav>
 
     <AgentSidebarMenus :model="model" />
@@ -288,15 +307,16 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronRightIcon, MailIcon } from '../shared/icons/app-icons';
-import { toRefs } from 'vue';
+import { computed, toRefs } from 'vue';
+import type { WorkspaceSidebarSession } from '@workspace/core/workspace-sidebar';
 import AgentSidebarMenus from './AgentSidebarMenus.vue';
 import MissionProgressIcon from './MissionProgressIcon.vue';
 import type { AgentSidebarModel } from './use-agent-sidebar';
-import { AlertTriangleIcon, ArrowsSortIcon, CarouselVerticalIcon, NewAgentIcon, MessageIcon, PanelLeftCloseIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
+import { AlertTriangleIcon, ArrowsSortIcon, CarouselVerticalIcon, ChevronRightIcon, DotsVerticalIcon, MailIcon, MessageIcon, NewAgentIcon, PanelLeftCloseIcon, PinIcon, PinOffIcon, PlusIcon, TargetArrowIcon } from '../shared/icons/app-icons';
 import ProviderIcon from './ProviderIcon.vue';
 import StartWorkMenu from './StartWorkMenu.vue';
 import AppMenuButton from '../shared/menu/AppMenuButton.vue';
+import type { AppMenuItem } from '../shared/menu/app-menu';
 import ActivityAgentRow from './ActivityAgentRow.vue';
 import ScrollHintRows from './ScrollHintRows.vue';
 import RemoteHostIndicator from './RemoteHostIndicator.vue';
@@ -323,6 +343,7 @@ const {
   openMissionMenu,
   missionStatusLabel,
   missionDotStatus,
+  statusLabel,
   activityGroups,
   activityIcons,
   idleSortMenuItems,
@@ -350,6 +371,27 @@ const {
   resizeStep,
   sessionList,
 } = toRefs(props.model);
+
+const sections = computed(() => {
+  const groups = activityGroups.value;
+  return groups[0]?.activity === 'pinned' ? [groups[0], null, ...groups.slice(1)] : [null, ...groups];
+});
+
+function rowActions(session: WorkspaceSidebarSession, pinned: boolean): AppMenuItem[] {
+  const items: AppMenuItem[] = [
+    pinned ? { id: 'unpin', type: 'action', label: t.value('sidebar.unpinAgent'), icon: PinOffIcon }
+      : { id: 'pin', type: 'action', label: t.value('sidebar.pinAgent'), icon: PinIcon },
+  ];
+  if (session.status.type === 'idle' && !session.isUnread) {
+    items.push({ id: 'mark-unread', type: 'action', label: t.value('agents.menu.markUnread'), icon: MailIcon });
+  }
+  return items;
+}
+
+function selectRowAction(agentId: string, action: string): void {
+  if (action === 'mark-unread') emit.value('set-agent-unread', { agentId, unread: true });
+  if (action === 'pin' || action === 'unpin') emit.value('set-agent-pinned', { agentId, pinned: action === 'pin' });
+}
 </script>
 
 <style scoped src="./agent-row.css"></style>
@@ -392,30 +434,69 @@ const {
 }
 
 .agent-sidebar__workspace-group[data-collapsed] { min-height: 0; flex: 0 0 auto; }
-.agent-sidebar__mark-unread {
+.agent-sidebar__agent-row:has(.agent-sidebar__activity-actions) {
+  --activity-actions-width: calc(var(--space-12) + var(--activity-actions-gap, var(--space-2)));
+}
+
+.agent-sidebar__activity-actions {
   position: absolute;
   right: var(--space-6);
   top: 50%;
   transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-sidebar__activity-actions[data-cleanup] { right: calc(var(--space-6) + var(--agent-sidebar-status-column-width) + var(--space-4)); }
+.agent-sidebar__agent-row:is(:hover, :focus-within) .agent-sidebar__activity-actions,
+.agent-sidebar__activity-actions:has(button[aria-expanded="true"]) { opacity: 1; pointer-events: auto; }
+
+.agent-sidebar__activity-menu-trigger {
   display: grid;
   place-items: center;
-  width: max(3ch, var(--icon-sm));
+  width: var(--space-12);
   height: var(--space-12);
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-12);
   --agent-ui-state-rest-foreground: var(--color-text-muted);
-  opacity: 0;
-  pointer-events: none;
 }
-.agent-sidebar__mark-unread[data-cleanup] { right: calc(var(--space-6) + var(--agent-sidebar-status-column-width) + var(--space-4)); }
-.agent-sidebar__mark-unread svg { width: var(--icon-sm); height: var(--icon-sm); }
-.agent-sidebar__agent-row:is(:hover, :focus-within) .agent-sidebar__mark-unread { opacity: 1; pointer-events: auto; }
-.agent-sidebar__agent-row:has(.agent-sidebar__mark-unread):is(:hover, :focus-within) :deep(.agent-sidebar__activity-time) { opacity: 0; }
+.agent-sidebar__activity-menu-trigger svg { width: var(--icon-sm); height: var(--icon-sm); }
+@media (hover: hover) {
+  [data-activity-group="idle"]:not(:hover) :deep(.agent-sidebar__activity-indicator--age) {
+    display: none;
+  }
+
+  :is([data-activity-group="working"], [data-activity-group="idle"]) .agent-sidebar__agent-row:has(.agent-sidebar__activity-actions):not(
+    :hover,
+    :focus-within,
+    :has(.agent-sidebar__activity-menu-trigger[aria-expanded="true"])
+  ) {
+    --activity-actions-width: 0px;
+  }
+
+  :is([data-activity-group="working"], [data-activity-group="idle"]) .agent-sidebar__agent-row {
+    --activity-actions-gap: var(--space-4);
+  }
+
+  :is([data-activity-group="working"], [data-activity-group="idle"]) .agent-sidebar__agent-row:has(.agent-sidebar__activity-actions):is(
+    :hover,
+    :focus-within,
+    :has(.agent-sidebar__activity-menu-trigger[aria-expanded="true"])
+  ) :deep(.agent-sidebar__activity-indicator--age) {
+    display: none;
+  }
+}
+
 @media (hover: none) {
-  .agent-sidebar__mark-unread { opacity: 1; pointer-events: auto; }
-  .agent-sidebar__agent-row:has(.agent-sidebar__mark-unread) :deep(.agent-sidebar__activity-time) { opacity: 0; }
+  .agent-sidebar__activity-actions { opacity: 1; pointer-events: auto; }
+}
+
+.agent-sidebar__pinned-status {
+  flex: none;
+  align-self: center;
+  margin-left: var(--space-4);
 }
 .agent-sidebar__activity-toggle { gap: var(--space-4); --agent-ui-state-rest-foreground: var(--activity-color); }
 .agent-sidebar__activity-disclosure { display: grid; place-items: center; flex: 0 0 var(--agent-sidebar-repository-icon-column-width); }
@@ -565,6 +646,12 @@ const {
 
 .agent-sidebar__workspace-group[data-activity-group="attention"] {
   --activity-color: var(--color-attention);
+
+  flex-shrink: 1;
+}
+
+.agent-sidebar__workspace-group[data-activity-group="pinned"] {
+  --activity-color: var(--color-primary);
 
   flex-shrink: 1;
 }

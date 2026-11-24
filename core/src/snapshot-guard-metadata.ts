@@ -129,6 +129,7 @@ function isAgent(value: unknown): boolean {
     optional(value, 'handoff', isAgentHandoff) &&
     optional(value, 'pullRequest', isAgentPullRequestTracking) &&
     optional(value, 'sessionKind', (candidate) => candidate === 'quickChat') &&
+    optional(value, 'pinned', (candidate) => candidate === true) &&
     isNullableString(value.name) &&
     optional(value, 'conversationTitle', isString) &&
     optional(value, 'avatar', isString) &&

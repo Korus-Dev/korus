@@ -4863,8 +4863,12 @@ function requireAgentUpdateInput(params: unknown): UpdateAgentInput {
       ? null
       : requireAgentGitDiffTarget(input.gitDiffTarget);
   }
-  if (result.name === undefined && result.gitDiffTarget === undefined && result.selection?.provider === undefined && result.selection === undefined) {
-    throw new Error('Agent update must include a name, backend, model selection, or Git diff target.');
+  if ('pinned' in input) {
+    if (typeof input.pinned !== 'boolean') throw new Error('pinned must be a boolean.');
+    result.pinned = input.pinned;
+  }
+  if (result.name === undefined && result.gitDiffTarget === undefined && result.selection === undefined && result.pinned === undefined) {
+    throw new Error('Agent update must include a name, backend, model selection, Git diff target, or pinned state.');
   }
   return result;
 }

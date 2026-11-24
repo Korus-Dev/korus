@@ -366,6 +366,7 @@ export type Agent = {
   delegationUserInstructions?: import('./delegation-context').DelegationUserInstructions;
   pullRequest?: AgentPullRequestTracking;
   sessionKind?: 'quickChat';
+  pinned?: true;
   /** Local navigation reference only. This agent never owns a local provider session. */
   sharedConversation?: { joinId: string };
   name: string | null;
@@ -794,6 +795,7 @@ export type ReorderTeamsInput = {
 
 export type UpdateAgentInput = {
   id: string;
+  pinned?: boolean;
   selection?: ExecutionSelectionOverrides;
   name?: string | null;
   gitDiffTarget?: AgentGitDiffTarget | null;

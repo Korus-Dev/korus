@@ -25,6 +25,19 @@ test('activity sections keep a 12px gap, except after a collapsed one', async ()
     assert.ok(await sections.count() >= 3, 'the fixture shows several activity sections');
     const expanded = await gaps();
     assert.deepEqual(expanded, expanded.map(() => 12), 'expanded sections keep the 12px gap');
+    const working = page.locator('[data-activity-group="working"]');
+    const overflowWhileMoving = await working.locator('[data-scroll-hint-rows]').evaluate(async (scroller) => {
+      const row = scroller.querySelector('.agent-sidebar__agent-row');
+      window.rowMotion = row.animate([{ transform: 'translateY(48px)' }, { transform: 'translateY(0)' }], 1000);
+      window.rowMotion.pause();
+      window.rowMotion.currentTime = 0;
+      await window.rowMotion.ready;
+      scroller.dispatchEvent(new Event('scroll'));
+      return scroller.scrollHeight - scroller.clientHeight;
+    });
+    assert.ok(overflowWhileMoving >= 8, 'row motion creates visual overflow in a section that fits');
+    assert.equal(await working.getByRole('button', { name: 'Show more' }).count(), 0, 'row motion does not advertise extra rows');
+    await page.evaluate(() => window.rowMotion.cancel());
     await sections.first().locator('.agent-sidebar__activity-toggle').click();
     await page.locator('section.agent-sidebar__section[data-activity-group][data-collapsed]').first().waitFor();
     const collapsed = await gaps();

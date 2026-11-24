@@ -5,13 +5,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createInitialSnapshot } from '@workspace/core/snapshot';
 import type { AgentSubagentTree } from '@workspace/core/contracts';
 import { AppStateStore } from '../store';
+import { AppBackendServer } from '../../server';
+import { backendMethods } from '@workspace/core/backend-protocol/methods';
 
 let home = '';
 beforeEach(async () => { home = await mkdtemp(path.join(os.tmpdir(), 'roster-contents-')); });
 afterEach(async () => { await rm(home, { recursive: true, force: true }); });
 
 const rosterPath = () => path.join(home, 'roster.json');
-type Roster = { data: { subagents?: unknown; agents: Array<{ id: string; subagents?: unknown }> } };
+type Roster = { schemaVersion: number; data: { subagents?: unknown; agents: Array<{ id: string; subagents?: unknown; pinned?: boolean }> } };
 const readRoster = async () => JSON.parse(await readFile(rosterPath(), 'utf8')) as Roster;
 
 const tree = (root: string): AgentSubagentTree => ({
@@ -22,6 +24,32 @@ const tree = (root: string): AgentSubagentTree => ({
 });
 
 describe('What roster.json keeps', () => {
+  it('pins and unpins one agent using the existing roster schema', async () => {
+    const store = new AppStateStore(home);
+    const snapshot = createInitialSnapshot();
+    const [agent, other] = snapshot.agents;
+    await store.save(snapshot);
+    const before = await readRoster();
+    expect(before.data.agents.filter(item => item.pinned)).toStrictEqual([]);
+    const server = new AppBackendServer({ version: 'test', snapshot: await store.load(), saveSnapshot: value => store.save(value) });
+    const update = (pinned: boolean) => server.handleMessage({
+      jsonrpc: '2.0', id: 'pin', method: backendMethods.agentUpdate, params: { input: { id: agent!.id, pinned } },
+    });
+    try {
+      await update(true);
+      const pinned = await readRoster();
+      expect(pinned.schemaVersion).toBe(before.schemaVersion);
+      expect(pinned.data.agents.find(item => item.id === agent!.id)?.pinned).toBe(true);
+      expect(pinned.data.agents.find(item => item.id === other!.id)?.pinned).toBeUndefined();
+      expect((await new AppStateStore(home).load()).agents.find(item => item.id === agent!.id)?.pinned).toBe(true);
+
+      await update(false);
+      expect((await readRoster()).data.agents.find(item => item.id === agent!.id)?.pinned).toBeUndefined();
+      expect((await new AppStateStore(home).load()).agents.find(item => item.id === agent!.id)?.pinned).toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
   it('keeps the subagents of an agent on that agent in roster.json', async () => {
     const snapshot = createInitialSnapshot();
     const [parent, other] = snapshot.agents;

@@ -7,6 +7,7 @@
     trigger="click"
     :width="width"
     :teleported="teleported"
+    :persistent="persistent"
     :show-arrow="false"
     :offset="6"
     popper-class="app-popover"
@@ -55,10 +56,12 @@ withDefaults(defineProps<{
   block?: boolean;
   /** Keep nested menus inside their owning overlay's outside-click boundary. */
   teleported?: boolean;
+  /** Keep menu content mounted while closed. */
+  persistent?: boolean;
   /** Shown instead of the items while they load or when loading failed. */
   message?: string;
   messageTone?: 'default' | 'error';
-}>(), { heading: undefined, placement: 'bottom-end', width: 220, maxHeight: undefined, block: false, teleported: true, message: undefined, messageTone: 'default' });
+}>(), { heading: undefined, placement: 'bottom-end', width: 220, maxHeight: undefined, block: false, teleported: true, persistent: true, message: undefined, messageTone: 'default' });
 
 const emit = defineEmits<{ select: [itemId: string] }>();
 const open = defineModel<boolean>('open', { default: false });

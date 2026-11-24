@@ -38,6 +38,7 @@ export type SidebarRepositoryTarget = { agentId: string; repositoryName: string;
 
 export type AgentSidebarEvents = {
   'set-agent-unread': [input: { agentId: string; unread: boolean }];
+  'set-agent-pinned': [input: { agentId: string; pinned: boolean }];
   'collapse-sidebar': [];
   'close-agent': [agentId: string];
   'compress-session': [agentId: string];

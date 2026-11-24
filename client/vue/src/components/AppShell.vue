@@ -150,6 +150,7 @@
       @start-sidebar-resize="startAgentSidebarResize"
       @restart-agent="$emit('restart-agent', $event)"
       @set-agent-unread="$emit('set-agent-unread', $event)"
+      @set-agent-pinned="updateAgentPin"
       @resume-session="openResumeSession"
       @select-agent="selectAgentFromShell"
       @select-team="selectTeamFromRail"
@@ -1149,6 +1150,13 @@ provide(codeReviewSettingsKey, { ...reviewSettings, preferences: () => props.sna
 provide(diffVizSettingsKey, () => props.snapshot.general);
 provideBacklogConnections(() => props.snapshot.workBacklog.connections);
 const backendSwitch = provideProviderSwitch((id, backend) => props.updateAgent({ id, selection: { provider: backend } }));
+async function updateAgentPin({ agentId, pinned }: { agentId: string; pinned: boolean }): Promise<void> {
+  try {
+    await props.updateAgent({ id: agentId, pinned });
+  } catch (error) {
+    ElMessage.error(localizedErrorMessage(error, t));
+  }
+}
 const agentSidebarCollapsed = ref(false);
 // A window can show less than the whole workspace: a team or a feature without the rail, or one agent without any navigation.
 const windowScope = computed(() => windowState.scope.value);

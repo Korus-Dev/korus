@@ -454,7 +454,8 @@ describe('AppShell navigation and teams', () => {
     otherMission.stageAgentIds.requirements = worker.id;
     const loadWorkRepositories = vi.fn().mockResolvedValue([]);
     localStorage.setItem('app:agentOrganization:team-app', 'repository');
-    const wrapper = mountRealShell({ snapshot, realAgentSidebar: true, stubAgentWorkspace: true, loadWorkRepositories });
+    const updateAgent = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mountRealShell({ snapshot, realAgentSidebar: true, stubAgentWorkspace: true, loadWorkRepositories, updateAgent });
     try {
       expect(wrapper.find('[data-activity-group]').exists()).toBe(false);
       expect(wrapper.find('[data-group-kind="repository"]').exists()).toBe(true);
@@ -471,6 +472,12 @@ describe('AppShell navigation and teams', () => {
       expect(sidebar().find('[aria-label="New mission"]').exists()).toBe(false);
       expect(wrapper.get('[aria-label="Cockpit"]').attributes('aria-pressed')).toBe('true');
       expect(loadWorkRepositories).not.toHaveBeenCalled();
+      const row = sidebar().get(`[data-reorder-id="${other.id}"]`).element.parentElement!;
+      row.querySelector<HTMLButtonElement>('[aria-label="Agent actions"]')!.click();
+      [...row.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(item => item.textContent?.trim() === 'Pin')!.click();
+      expect(updateAgent).toHaveBeenCalledExactlyOnceWith({ id: other.id, pinned: true });
+      await wrapper.setProps({ snapshot: { ...snapshot, agents: snapshot.agents.map(agent => agent.id === other.id ? { ...agent, pinned: true } : agent) } });
+      expect(sidebar().findAll('nav > section')[0]?.attributes('data-activity-group')).toBe('pinned');
       await sidebar().get(`[data-reorder-id="${other.id}"]`).trigger('click');
       expect(wrapper.emitted('select-agent')?.at(-1)).toEqual([other.id]);
       selectAgent(snapshot, other.id);

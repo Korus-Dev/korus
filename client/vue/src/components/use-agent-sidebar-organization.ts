@@ -2,7 +2,8 @@ import { computed, ref, watch } from 'vue';
 import type { Agent } from '@workspace/core/contracts';
 import { projectActivitySidebar, projectWorktreeSidebar, type WorkspaceSidebarGroup, type SidebarActivity } from '@workspace/core/workspace-sidebar';
 
-export type SidebarGroup = WorkspaceSidebarGroup & { activity?: SidebarActivity };
+export type DesktopSidebarActivity = SidebarActivity | 'pinned';
+export type SidebarGroup = WorkspaceSidebarGroup & { activity?: DesktopSidebarActivity };
 
 export function useAgentSidebarOrganization(options: {
   teamId: () => string | null | undefined;
@@ -10,20 +11,20 @@ export function useAgentSidebarOrganization(options: {
   repositoryGroups: () => WorkspaceSidebarGroup[];
   featureLabels?: () => Readonly<Record<string, string>> | undefined;
   featureOrder?: () => readonly string[] | undefined;
-  label: (activity: SidebarActivity) => string;
+  label: (activity: DesktopSidebarActivity) => string;
   activityOnly?: () => boolean;
 }) {
   const mode = ref<'repository' | 'activity' | 'worktree'>('repository');
   const idleSort = ref<'activity' | 'repository'>('activity');
   const now = ref(Date.now());
-  const collapsedGroups = ref<SidebarActivity[]>([]);
+  const collapsedGroups = ref<DesktopSidebarActivity[]>([]);
   const collapsedKey = () => `app:collapsedActivityGroups:${options.activityOnly?.() ? 'all' : options.teamId() ?? 'default'}`;
   const preferenceKey = () => options.teamId() ? `app:agentOrganization:${options.teamId()}` : null;
   const idleSortKey = () => options.teamId() ? `app:idleAgentSort:${options.teamId()}` : null;
   watch([options.teamId, () => options.activityOnly?.() ?? false], () => {
     try {
       const saved = JSON.parse(localStorage.getItem(collapsedKey()) ?? '[]');
-      collapsedGroups.value = Array.isArray(saved) ? saved.filter((value): value is SidebarActivity => ['attention', 'recent', 'working', 'idle'].includes(value)) : [];
+      collapsedGroups.value = Array.isArray(saved) ? saved.filter((value): value is DesktopSidebarActivity => ['pinned', 'attention', 'recent', 'working', 'idle'].includes(value)) : [];
     } catch { collapsedGroups.value = []; }
     if (options.activityOnly?.()) { mode.value = 'activity'; idleSort.value = 'activity'; return; }
     try {
@@ -47,10 +48,19 @@ export function useAgentSidebarOrganization(options: {
   }
 
   const groups = computed<SidebarGroup[]>(() => {
-    if (mode.value === 'repository') return options.repositoryGroups();
-    if (mode.value === 'worktree') return projectWorktreeSidebar(options.repositoryGroups(), options.featureLabels?.(), options.featureOrder?.());
-    return projectActivitySidebar({ agents: options.agents(), repositoryGroups: options.repositoryGroups(),
+    const repositoryGroups = options.repositoryGroups();
+    if (mode.value === 'repository') return repositoryGroups;
+    if (mode.value === 'worktree') return projectWorktreeSidebar(repositoryGroups, options.featureLabels?.(), options.featureOrder?.());
+    const agents = options.agents();
+    const groups = projectActivitySidebar({ agents, repositoryGroups,
       now: Math.max(now.value, Date.now()), label: options.label, idleSort: idleSort.value });
+    const pinnedIds = new Set(agents.filter(agent => agent.pinned).map(agent => agent.id));
+    if (!pinnedIds.size) return groups;
+    const pinned = repositoryGroups.flatMap(group => group.sessions.filter(session => pinnedIds.has(session.agentId)));
+    return [
+      { id: 'activity:pinned', kind: 'folder', activity: 'pinned', label: options.label('pinned'), sessions: pinned } satisfies SidebarGroup,
+      ...groups.map(group => ({ ...group, sessions: group.sessions.filter(session => !pinnedIds.has(session.agentId)) })),
+    ].filter(group => group.sessions.length);
   });
   function selectIdleSort(value: string): void {
     if (options.activityOnly?.() || (value !== 'repository' && value !== 'activity')) return;
@@ -58,8 +68,8 @@ export function useAgentSidebarOrganization(options: {
     const key = idleSortKey();
     try { if (key) localStorage.setItem(key, value); } catch { /* Keep the session choice if storage is unavailable. */ }
   }
-  function isCollapsed(activity: SidebarActivity): boolean { return collapsedGroups.value.includes(activity); }
-  function toggleGroup(activity: SidebarActivity): void {
+  function isCollapsed(activity: DesktopSidebarActivity): boolean { return collapsedGroups.value.includes(activity); }
+  function toggleGroup(activity: DesktopSidebarActivity): void {
     collapsedGroups.value = isCollapsed(activity) ? collapsedGroups.value.filter(value => value !== activity) : [...collapsedGroups.value, activity];
     try { localStorage.setItem(collapsedKey(), JSON.stringify(collapsedGroups.value)); } catch { /* Retain the session choice. */ }
   }

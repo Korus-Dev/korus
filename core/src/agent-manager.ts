@@ -100,6 +100,8 @@ export function updateAgentFromInput(snapshot: AppSnapshot, input: UpdateAgentIn
     agent.name = normalizedOptionalString(input.name) ?? null;
     agent.updatedAt = updatedAt;
   }
+  if (input.pinned === true) agent.pinned = true;
+  else if (input.pinned === false) delete agent.pinned;
   if (input.gitDiffTarget !== undefined) {
     if (input.gitDiffTarget) {
       agent.gitDiffTarget = { ...input.gitDiffTarget };

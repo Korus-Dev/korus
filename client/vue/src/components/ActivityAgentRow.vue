@@ -40,11 +40,12 @@ const icon = computed(() => props.quickChat ? MessageIcon
   gap: 0;
   min-height: 48px;
   padding: var(--space-4) var(--space-6);
+  padding-right: calc(var(--space-6) + var(--activity-actions-width, 0px));
   align-items: start;
 }
 
 .agent-sidebar__activity-agent--cleanup.agent-sidebar__agent {
-  padding-right: calc(var(--space-6) + var(--agent-sidebar-status-column-width, 12px) + var(--space-4));
+  padding-right: calc(var(--space-6) + var(--activity-actions-width, 0px) + var(--agent-sidebar-status-column-width, 12px) + var(--space-4));
 }
 
 .agent-sidebar__meta {

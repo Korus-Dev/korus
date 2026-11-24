@@ -4,6 +4,7 @@ import ScrollHintRows from '../ScrollHintRows.vue';
 
 function metrics(element: HTMLElement, values: { clientHeight: number; scrollHeight: number; scrollTop: number }): void {
   for (const [key, value] of Object.entries(values)) Object.defineProperty(element, key, { configurable: true, value });
+  Object.defineProperty(element.firstElementChild, 'offsetHeight', { configurable: true, value: values.scrollHeight });
 }
 
 describe('ScrollHintRows', () => {
