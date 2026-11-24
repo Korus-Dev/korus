@@ -25,11 +25,7 @@ try {
   const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
   if (!daemonVersion.includes(version)) throw new Error('Incorrect bundled daemon version.');
   if (fs.existsSync(path.join(resources, 'codex'))) throw new Error('Desktop package must not contain a bundled Codex runtime.');
-  const claude = path.join(resources, 'claude', process.platform === 'win32' ? 'claude.exe' : 'claude');
-  const claudeRelease = JSON.parse(fs.readFileSync(path.join(resources, 'claude/release.json'), 'utf8'));
-  const claudeVersion = execFileSync(claude, ['--version'], { env, encoding: 'utf8', timeout: 30_000 }).trim();
-  if (claudeVersion !== `${claudeRelease.version} (Claude Code)`) throw new Error('Incorrect bundled Claude runtime version.');
-  await checkPackagedDaemon(node, path.join(resources, 'daemon', product.daemonName), env, version, { requireClaude: true });
+  await checkPackagedDaemon(node, path.join(resources, 'daemon', product.daemonName), env, version);
   if (process.platform === 'darwin' && process.arch === mobileRelease.arch) checkPackagedMobileSimulator(resources, mobileRelease, env);
   if (process.platform === 'darwin' && process.env.APP_SKIP_SIGNING !== '1') {
     const bundle = path.join(app, `${product.name}.app`);
@@ -37,5 +33,5 @@ try {
     execFileSync('spctl', ['--assess', '--type', 'execute', bundle], { stdio: 'inherit' });
     execFileSync('xcrun', ['stapler', 'validate', bundle], { stdio: 'inherit' });
   }
-  console.log(`Packaged Node, Claude runtime, daemon health and provider detection passed on ${process.platform}/${process.arch}.`);
+  console.log(`Packaged Node, daemon health and provider detection passed on ${process.platform}/${process.arch}.`);
 } finally { fs.rmSync(home, { recursive: true, force: true }); }

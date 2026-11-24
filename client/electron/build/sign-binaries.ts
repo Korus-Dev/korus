@@ -40,7 +40,6 @@ export function signDarwinBinaries(
       '--sign',
       identity,
       ...(binary.label === 'Node runtime' ? ['--timestamp', '--entitlements', path.resolve(__dirname, 'Entitlements.darwin.plist')] : []),
-      ...(binary.label === 'Claude runtime' ? ['--timestamp', '--preserve-metadata=entitlements'] : []),
       binary.path,
     ], {
       stdio: 'inherit',
@@ -91,9 +90,6 @@ function resolveDarwinBinaryPaths(
     path: path.join(resourcePath, 'runtime', 'node'),
   }));
 
-  const claudeRuntimePaths = resourcePaths.map(resourcePath => ({ label: 'Claude runtime', path: path.join(resourcePath, 'claude', 'claude') }));
-  const claudeRuntime = claudeRuntimePaths.find(binary => existsSync(binary.path)) ?? claudeRuntimePaths[0];
-
   const mobileCompanionPaths = resourcePaths.map(resourcePath => ({
     label: 'iOS simulator companion',
     path: path.join(resourcePath, 'mobile-simulator', 'idb_companion'),
@@ -106,5 +102,5 @@ function resolveDarwinBinaryPaths(
   // The companion is optional (absent on hosts without a pinned build). Electron's outer osxSign
   // pass also walks and signs its nested Mach-O resources.
   const mobileCompanion = mobileCompanionPaths.find(binary => existsSync(binary.path));
-  return [appleSpeechHelper, computerUseHelper, ttsHelper, nodeRuntime, ...(mobileCompanion ? [mobileCompanion] : []), claudeRuntime];
+  return [appleSpeechHelper, computerUseHelper, ttsHelper, nodeRuntime, ...(mobileCompanion ? [mobileCompanion] : [])];
 }

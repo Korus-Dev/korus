@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 
 // Probe Korus's own runtime. Provider executables and accounts are not prerequisites.
-export function checkPackagedDaemon(node, daemon, env, version, { requireClaude = false } = {}) {
+export function checkPackagedDaemon(node, daemon, env, version) {
   return new Promise((resolve, reject) => {
     const child = spawn(node, [daemon, '--stdio'], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     let buffer = '';
@@ -42,9 +42,6 @@ export function checkPackagedDaemon(node, daemon, env, version, { requireClaude 
           if (reply.id === 2 && (!Array.isArray(reply.result)
             || !['codex', 'claude'].every(id => reply.result.some(provider => provider.provider === id && typeof provider.installed === 'boolean')))) {
             throw new Error('Packaged daemon did not return provider detection status.');
-          }
-          if (reply.id === 2 && requireClaude && !reply.result.some(provider => provider.provider === 'claude' && provider.installed === true)) {
-            throw new Error('Packaged Claude runtime was not detected.');
           }
           pending.delete(reply.id);
           if (!pending.size) finish();

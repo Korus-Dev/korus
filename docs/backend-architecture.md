@@ -890,15 +890,12 @@ conversation or sequence cursor outlives the backend instance.
 - The bundle imports no `electron`, leaves Node built-ins external, ships
   sourcemaps, and avoids native dependencies unless their packaging and signing
   are designed.
-- Provider selection prefers an installed CLI on the owning host. Codex can use
-  the CLI embedded in ChatGPT on macOS when no CLI is found. Claude falls back to
-  the SDK-matched native executable shipped beside the daemon, outside ASAR, with
-  its license and release metadata. Packaging requires the target platform/architecture
-  optional SDK dependency at the matching SDK version; it never substitutes the
-  build host's executable. macOS signing preserves the runtime's native entitlements.
-  Development and packaging do not download, pin or bundle Codex. Release smoke
-  checks reject a bundled Codex resource directory and probe the packaged daemon's
-  health and provider detection without requiring a provider installation or login.
+- Provider selection uses the CLI installed on the owning host. Codex can use
+  the CLI embedded in ChatGPT on macOS when no CLI is found. Claude runs only from
+  the `claude` on `PATH` or an explicit override: the desktop package bundles no
+  provider executable, which keeps hundreds of megabytes out of every download.
+  Release smoke checks probe the packaged daemon's health and provider detection
+  without requiring a provider installation or login.
 - The iOS simulator companion is a pinned native resource, prepared from an
   upstream archive with SHA-256 verification, including cached downloads. Its
   protocol and native dependency notices travel with the resource directory.

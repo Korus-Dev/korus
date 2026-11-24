@@ -31,15 +31,15 @@ it('copies each displayed login command and reports clipboard failures', async (
 });
 
 
-it('copies a quoted bundled executable path when no CLI is installed', async () => {
+it('copies a quoted executable path', async () => {
   const wrapper = mount(LocalClaudeAuthenticationDialog, {
-    props: { modelValue: true, configDirectory: null, executablePath: "/Applications/Korus Beta's.app/Contents/Resources/claude/claude", loading: false, error: null },
+    props: { modelValue: true, configDirectory: null, executablePath: "/Users/o'brien/.local/bin/claude", loading: false, error: null },
     global: { stubs: { teleport: true } },
   });
   await flushPromises();
   expect(wrapper.findAll('code').map(row => row.text())).toStrictEqual([
-    "env -u CLAUDE_CONFIG_DIR '/Applications/Korus Beta'\\''s.app/Contents/Resources/claude/claude' auth login --claudeai",
-    "env -u CLAUDE_CONFIG_DIR '/Applications/Korus Beta'\\''s.app/Contents/Resources/claude/claude' auth login --console",
+    "env -u CLAUDE_CONFIG_DIR '/Users/o'\\''brien/.local/bin/claude' auth login --claudeai",
+    "env -u CLAUDE_CONFIG_DIR '/Users/o'\\''brien/.local/bin/claude' auth login --console",
   ]);
   wrapper.unmount();
 });

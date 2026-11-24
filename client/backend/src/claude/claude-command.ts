@@ -1,20 +1,8 @@
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { resolveClaudeLaunch as sdkLaunch } from '@korus-dev/multi-agent-sdk/runtime';
 import { resolveRuntimeExecutable, resolveRuntimeLaunch, type RuntimeDiscoveryDependencies } from '@workspace/core/runtime-discovery';
 
+/** Claude runs from the CLI on the user's PATH, or an explicit override; Korus ships none of its own. */
 export function resolveClaudeLaunch(configuredPath?: string, overrides?: NodeJS.ProcessEnv, dependencies: RuntimeDiscoveryDependencies = {}) {
   const configured = configuredPath?.trim() || process.env.APP_CLAUDE_COMMAND?.trim();
-  return sdkLaunch(configured, overrides, dependencies, (command, env, discovery) => {
-    const launch = resolveRuntimeLaunch(command, env, discovery);
-    if (configured || launch.command !== 'claude') return launch;
-    // Korus packages the Claude binary beside its daemon, or supplies an explicit resources root.
-    const executable = process.platform === 'win32' ? 'claude.exe' : 'claude';
-    const packaged = launch.env.APP_ASSETS_PATH
-      ? path.join(launch.env.APP_ASSETS_PATH, 'claude', executable)
-      : fileURLToPath(new URL(`../claude/${executable}`, import.meta.url));
-    return existsSync(packaged) ? { ...launch, command: packaged } : launch;
-  });
+  return resolveRuntimeLaunch(configured || 'claude', overrides, dependencies);
 }
 export function resolveClaudeExecutable() { return resolveRuntimeExecutable(resolveClaudeLaunch().command); }
