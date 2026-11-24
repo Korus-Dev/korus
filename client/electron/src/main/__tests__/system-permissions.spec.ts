@@ -69,8 +69,9 @@ describe('system permissions', () => {
     });
     expect(isTrustedAccessibilityClient).toHaveBeenNthCalledWith(1, true);
     expect(isTrustedAccessibilityClient).toHaveBeenNthCalledWith(2, false);
-    expect(openExternal).toHaveBeenNthCalledWith(1, 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
-    expect(openExternal).toHaveBeenNthCalledWith(2, 'x-apple.systempreferences:com.apple.preference.security?Privacy');
+    // macOS 13+ names the pane by its Settings extension; the legacy anchor is the first fallback.
+    expect(openExternal).toHaveBeenNthCalledWith(1, 'x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility');
+    expect(openExternal).toHaveBeenNthCalledWith(2, 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
   });
 
   it('skips opening settings when the native Accessibility prompt grants trust', async () => {

@@ -329,6 +329,31 @@ describe('SettingsGeneralPanel', () => {
     expect(wrapper.text()).toContain('Granted');
   });
 
+  it('notices a permission granted in System Settings after Grant, then stops checking', async () => {
+    vi.useFakeTimers();
+    const missing = permissionStatus({ required: true, trusted: false });
+    const getSystemPermissions = vi.fn().mockResolvedValue(missing);
+    const openAccessibilitySettings = vi.fn().mockResolvedValue(missing);
+    const wrapper = mountPanel({ getSystemPermissions, openAccessibilitySettings });
+    await flushPromises();
+
+    const accessibility = () => wrapper.findAll('.settings-general-panel__status')[0]!.text();
+    await wrapper.findAll('button').find((button) => button.text() === 'Grant')?.trigger('click');
+    await flushPromises();
+    expect(accessibility()).toBe('Required');
+
+    // The user drags Korus into the list; no click in Korus tells the panel.
+    getSystemPermissions.mockResolvedValue(permissionStatus({ required: true, trusted: true }));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(accessibility()).toBe('Granted');
+
+    const checks = getSystemPermissions.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(getSystemPermissions).toHaveBeenCalledTimes(checks);
+    wrapper.unmount();
+    vi.useRealTimers();
+  });
+
   it('shows Screen Recording status and grants it through the helper', async () => {
     const getSystemPermissions = vi.fn().mockResolvedValue(permissionStatus(
       { required: true, trusted: true },

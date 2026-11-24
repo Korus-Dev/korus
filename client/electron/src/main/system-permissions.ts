@@ -8,6 +8,7 @@ type SystemPermissionDependencies = {
 };
 
 const accessibilitySettingsUrls = [
+  'x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility',
   'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
   'x-apple.systempreferences:com.apple.preference.security?Privacy',
   'x-apple.systempreferences:',

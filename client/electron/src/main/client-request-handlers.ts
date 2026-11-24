@@ -8,6 +8,8 @@ import { executeComputerUseCommand, getComputerUseStatus, isComputerUseCommand, 
 import { getSystemPermissionsStatus, openAccessibilitySettings } from './system-permissions';
 import { createRuntimeSpokenAnnouncementQueue, type SpokenAnnouncementQueue } from './spoken-announcements';
 
+const screenRecordingSettingsUrl = 'x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture';
+
 export type ClientRequestHandler = (params: unknown) => unknown | Promise<unknown>;
 
 export type ClientRequestHandlersOptions = {
@@ -108,10 +110,14 @@ export function createClientRequestHandlers(options: ClientRequestHandlersOption
       await options.openAccessibilitySettings(),
       await getComputerUseStatus(options.computerUseOptions()),
     ),
-    [backendMethods.clientSystemPermissionsScreenRecordingOpen]: async () => mergeComputerUsePermissions(
-      options.getSystemPermissionsStatus(),
-      await requestComputerUseScreenCapture(options.computerUseOptions()),
-    ),
+    [backendMethods.clientSystemPermissionsScreenRecordingOpen]: async () => {
+      const computerUse = await requestComputerUseScreenCapture(options.computerUseOptions());
+      // macOS prompts for Screen Recording only once; afterwards the grant has to happen in its pane.
+      if (computerUse.platform === 'darwin' && !computerUse.screenCaptureTrusted) {
+        void Promise.resolve(options.openExternal(screenRecordingSettingsUrl)).catch(() => undefined);
+      }
+      return mergeComputerUsePermissions(options.getSystemPermissionsStatus(), computerUse);
+    },
     [backendMethods.clientComputerUseStatusGet]: () => getComputerUseStatus(options.computerUseOptions()),
     [backendMethods.clientComputerUseRequestAccessibility]: () => requestComputerUseAccessibility(options.computerUseOptions()),
     [backendMethods.clientComputerUseStop]: () => {

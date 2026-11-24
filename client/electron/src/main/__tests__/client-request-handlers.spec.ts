@@ -298,4 +298,21 @@ describe('createClientRequestHandlers', () => {
     });
     expect(computerUseMocks.requestScreenCapture).toHaveBeenCalledOnce();
   });
+
+  it('opens the Screen Recording pane while the permission is missing, since macOS prompts only once', async () => {
+    const status = { platform: 'darwin', accessibility: { required: true, trusted: true }, screenRecording: { required: false, trusted: true } };
+    const openExternal = vi.fn().mockResolvedValue(undefined);
+    const handlers = createClientRequestHandlers({ openExternal, getSystemPermissionsStatus: vi.fn(() => status), openAccessibilitySettings: vi.fn(), computerUseOptions });
+    const missing = { accessibilityTrusted: true, screenCaptureTrusted: false, available: true, platform: 'darwin' };
+
+    computerUseMocks.requestScreenCapture.mockResolvedValueOnce(missing);
+    await handlers['client/system/permissions/screenRecording/open']!(undefined);
+    expect(openExternal).toHaveBeenCalledExactlyOnceWith('x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture');
+
+    computerUseMocks.requestScreenCapture.mockResolvedValueOnce({ ...missing, screenCaptureTrusted: true });
+    await handlers['client/system/permissions/screenRecording/open']!(undefined);
+    computerUseMocks.requestScreenCapture.mockResolvedValueOnce({ ...missing, platform: 'linux' });
+    await handlers['client/system/permissions/screenRecording/open']!(undefined);
+    expect(openExternal).toHaveBeenCalledOnce();
+  });
 });

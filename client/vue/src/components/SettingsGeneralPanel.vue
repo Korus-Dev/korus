@@ -222,7 +222,7 @@
 import { rendererPlatform } from '../renderer-platform';
 import { translate } from '../i18n';
 import { appMessageBox } from '../shared/dialog/message-box';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { AppGeneralSettings, DaemonStatus, SourceFolderState, SystemPermissionsStatus, UpdateSettingsInput } from '@workspace/core/contracts';
 import { defaultSourceFolderState } from '@workspace/core/settings';
 import SettingsPanelFrame from './SettingsPanelFrame.vue';
@@ -364,6 +364,7 @@ async function grantAccessibility(): Promise<void> {
   } finally {
     openingAccessibilitySettings.value = false;
   }
+  watchUntilGranted('accessibility');
 }
 
 async function grantScreenRecording(): Promise<void> {
@@ -373,7 +374,33 @@ async function grantScreenRecording(): Promise<void> {
   } finally {
     openingScreenRecordingSettings.value = false;
   }
+  watchUntilGranted('screenRecording');
 }
+
+/** How long after Grant the panel keeps looking: as long as the permission guide stays up. */
+const grantWatchMs = 10 * 60_000;
+let grantWatch: ReturnType<typeof setInterval> | undefined;
+
+// The grant itself happens in System Settings, where nothing tells this panel; check until it lands.
+function watchUntilGranted(permission: 'accessibility' | 'screenRecording'): void {
+  stopGrantWatch();
+  if (permissions.value?.[permission].trusted !== false) return;
+  const until = Date.now() + grantWatchMs;
+  grantWatch = setInterval(() => {
+    if (Date.now() > until || permissions.value?.[permission].trusted) {
+      stopGrantWatch();
+      return;
+    }
+    if (!loadingPermissions.value) void loadPermissions().catch(() => undefined);
+  }, 1_500);
+}
+
+function stopGrantWatch(): void {
+  clearInterval(grantWatch);
+  grantWatch = undefined;
+}
+
+onBeforeUnmount(stopGrantWatch);
 
 async function chooseSourceFolder(): Promise<void> {
   sourceFolderError.value = null;
