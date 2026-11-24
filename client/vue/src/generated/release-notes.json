@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.60.0",
+  "currentVersion": "0.60.1",
   "releases": [
+    {
+      "version": "0.60.1",
+      "releasedAt": "2026-11-24",
+      "sourceSha256": "b06b98f6d7531b0d39e3f7922c05922316bf1722faaca0152231cd7e13d78fdd",
+      "markdown": "### New features\n\n- Pin agents from their row menu to keep them at the top of **Cockpit** across restarts.\n- Follow live **Antigravity subagent** status and open their read-only conversations.\n\n### Improvements and fixes\n\n- **Antigravity tools** show clearer labels and icons. Recognized calls to trusted Korus tools skip the approval prompt.\n- **Analytics** includes more Antigravity token usage from saved sessions, background work, and subagents. Partial token totals are labeled.\n- Conversations show a single **Working** label while the agent is processing.\n- On macOS, Korus opens the right System Settings pane and detects newly granted permissions. The disk image cleanup offer survives moving Korus to Applications.\n- **Claude Code** requires the CLI on the machine running the agent. Korus finds `claude` on `PATH` or uses your configured executable."
+    },
     {
       "version": "0.60.0",
       "releasedAt": "2026-11-23",

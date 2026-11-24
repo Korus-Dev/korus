@@ -2,6 +2,21 @@
 
 All notable Korus changes are recorded here.
 
+## [0.60.1] - 2026-11-24
+
+### New features
+
+- Pin agents from their row menu to keep them at the top of **Cockpit** across restarts.
+- Follow live **Antigravity subagent** status and open their read-only conversations.
+
+### Improvements and fixes
+
+- **Antigravity tools** show clearer labels and icons. Recognized calls to trusted Korus tools skip the approval prompt.
+- **Analytics** includes more Antigravity token usage from saved sessions, background work, and subagents. Partial token totals are labeled.
+- Conversations show a single **Working** label while the agent is processing.
+- On macOS, Korus opens the right System Settings pane and detects newly granted permissions. The disk image cleanup offer survives moving Korus to Applications.
+- **Claude Code** requires the CLI on the machine running the agent. Korus finds `claude` on `PATH` or uses your configured executable.
+
 ## [0.60.0] - 2026-11-23
 
 ### New features
