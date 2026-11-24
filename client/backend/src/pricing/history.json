@@ -188,6 +188,14 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "8b4bc174942ae94b8e05e09d85c4a03e9c3078c2"
           }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
+          }
         }
       ]
     },
@@ -222,6 +230,14 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "c843d3f8022309a8fe6c9c23e13678911331a2a5"
           }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
+          }
         }
       ]
     },
@@ -255,6 +271,14 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "c5eaf386519feece52a8e808ef255f53d6db1899"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
           }
         }
       ]
@@ -459,6 +483,14 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "2d4d73f7a75863031fc14dee8d25160cfbc5152b"
           }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
+          }
         }
       ]
     },
@@ -582,6 +614,14 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "f6218e763f6f91f876b069d2cecfa0ca2529d4d4"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
           }
         }
       ]
@@ -1532,6 +1572,14 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "c55ccede8109a1ce8839627a9ef37430d9ea65b5"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
           }
         }
       ]
@@ -4069,6 +4117,77 @@
             "revision": "319c6e52364db63d46d5f83224e692246afd404d",
             "collectedAt": "2026-11-15T10:53:55.493Z",
             "blobSha": "b65425fb52997c45d29a979819ab5dc1289fd734"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 20,
+                "cache": {
+                  "read": 2,
+                  "write": {
+                    "12h": 50,
+                    "30m": 25
+                  }
+                },
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 40,
+                    "cache": {
+                      "read": 4
+                    },
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "price": 100,
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 150,
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "web_search": {
+              "price": 10
+            }
+          },
+          "cache": {
+            "implicit": {
+              "ttl": [
+                "12h",
+                "30m"
+              ],
+              "min_tokens": 1024
+            },
+            "explicit": {
+              "ttl": [
+                "12h",
+                "30m"
+              ],
+              "min_tokens": 1024,
+              "max_breakpoints": 4
+            }
+          },
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z",
+            "blobSha": "1f0272139848f9fd8c13bbed795669b232ebae94"
           }
         }
       ]
@@ -6735,7 +6854,9 @@
         "canonicalId": "openai/gpt-realtime-2.1",
         "source": {
           "path": "providers/openai/models/gpt-realtime-2.1.toml",
-          "urls": []
+          "urls": [
+            "https://developers.openai.com/api/docs/pricing"
+          ]
         }
       },
       "cost": [
@@ -6771,6 +6892,52 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "8034c74d07a43ea27374a22c9d286caefdf31729"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 4,
+                "cache": {
+                  "read": 0.4
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 24,
+                "unit": "token"
+              }
+            },
+            "image": {
+              "input": {
+                "price": 5,
+                "cache": {
+                  "read": 0.5
+                },
+                "unit": "token"
+              }
+            },
+            "audio": {
+              "input": {
+                "price": 32,
+                "cache": {
+                  "read": 0.4
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 64,
+                "unit": "token"
+              }
+            }
+          },
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z",
+            "blobSha": "9c9e63c58468323be24fb1da30be0f58b4cd075e"
           }
         }
       ]
@@ -7027,6 +7194,14 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "5b0b356e8999b8f365d7723cb8b391e48d7e4c1f"
           }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
+          }
         }
       ]
     },
@@ -7058,6 +7233,14 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "035bbe8a4d93ff35c7256885a148cb5e6f9ae527"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
           }
         }
       ]
@@ -7186,6 +7369,14 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "bbb250a1317b794d2dd2b14c9b357be124568cb7"
           }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
+          }
         }
       ]
     },
@@ -7312,6 +7503,14 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "3193254f6a198ac01cfd934a90e8db59de7ab481"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
           }
         }
       ]
@@ -8476,7 +8675,11 @@
           "urls": [
             "https://platform.claude.com/docs/en/about-claude/pricing#fast-mode-pricing",
             "https://platform.claude.com/docs/en/about-claude/pricing#web-search-tool",
+            "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools#forcing-tool-use",
+            "https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool#model-compatibility",
             "https://platform.claude.com/docs/en/api/openai-sdk",
+            "https://platform.claude.com/docs/en/build-with-claude/fast-mode",
+            "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
             "https://platform.claude.com/docs/en/manage-claude/data-residency#pricing"
           ]
         }
@@ -8561,6 +8764,84 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "45541d13378eea3f34863f0e72dc4535043f60a5"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 4,
+                "cache": {
+                  "read": 0.2,
+                  "write": {
+                    "1h": 8,
+                    "5m": 5
+                  }
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 20,
+                "unit": "token"
+              }
+            },
+            "web_search": {
+              "price": 10
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "region": {
+                    "equals": "us"
+                  }
+                },
+                "factor": {
+                  "text": 1.1
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "fast"
+                  }
+                },
+                "factor": {
+                  "text": 2
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "fast"
+          ],
+          "cache": {
+            "explicit": {
+              "ttl": [
+                "1h",
+                "5m"
+              ],
+              "min_tokens": 512,
+              "max_breakpoints": 4,
+              "targets": [
+                "messages",
+                "system",
+                "tools"
+              ]
+            }
+          },
+          "modes": {
+            "fast": {
+              "body": {
+                "speed": "fast"
+              }
+            }
+          },
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z",
+            "blobSha": "49e528a4a6336d20d279f2e9bdb47c84f3222053"
           }
         }
       ]
@@ -9119,6 +9400,14 @@
             "revision": "319c6e52364db63d46d5f83224e692246afd404d",
             "collectedAt": "2026-11-15T10:53:55.493Z",
             "blobSha": "75fc16d9e4576b6df01b1896732dec35b0ba0665"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
           }
         }
       ]
@@ -10222,6 +10511,14 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "685d2447736f0f625bfdd51dcc2942b9287ce07c"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
           }
         }
       ]
@@ -12038,9 +12335,12 @@
           "path": "providers/google/models/gemini-flash-latest.toml",
           "urls": [
             "https://ai.google.dev/api/caching#Content",
+            "https://ai.google.dev/api/caching#FunctionCallingConfig,",
+            "https://ai.google.dev/gemini-api/docs/function-calling#function_calling_modes",
             "https://ai.google.dev/gemini-api/docs/image-understanding",
             "https://ai.google.dev/gemini-api/docs/interactions-overview",
             "https://ai.google.dev/gemini-api/docs/openai",
+            "https://ai.google.dev/gemini-api/docs/pricing#gemini-3.8-flash",
             "https://generativelanguage.googleapis.com/v1beta/models"
           ]
         }
@@ -12079,6 +12379,119 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "eeb5e65b770a6ae8cf8fb7310172b4f092f8711b"
           }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 0.75,
+                "cache": {
+                  "read": 0.075,
+                  "storage": 0.5
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 3.75,
+                "unit": "token"
+              }
+            },
+            "audio": {
+              "input": {
+                "price": 0.75,
+                "cache": {
+                  "read": 0.075,
+                  "storage": 0.5
+                },
+                "unit": "token"
+              }
+            },
+            "web_search": {
+              "price": 14
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "flex"
+                  }
+                },
+                "factor": {
+                  "audio": {
+                    "input": {
+                      "cache": {
+                        "read": 0.5
+                      },
+                      "price": 0.5
+                    }
+                  },
+                  "text": {
+                    "input": {
+                      "cache": {
+                        "read": 0.5
+                      },
+                      "price": 0.5
+                    },
+                    "output": 0.5
+                  }
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "audio": {
+                    "input": {
+                      "cache": {
+                        "read": 1.8
+                      },
+                      "price": 1.8
+                    }
+                  },
+                  "text": {
+                    "input": {
+                      "cache": {
+                        "read": 1.8
+                      },
+                      "price": 1.8
+                    },
+                    "output": 1.8
+                  }
+                }
+              },
+              {
+                "when": {
+                  "date": {
+                    "gte": "2027-01-01"
+                  }
+                },
+                "factor": {
+                  "audio": 2,
+                  "text": 2
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "flex",
+            "priority"
+          ],
+          "cache": {
+            "implicit": {
+              "min_tokens": 4096
+            },
+            "explicit": true
+          },
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z",
+            "blobSha": "e4924147b2789c68287607bcb2867cfbc9cc06f9"
+          }
         }
       ]
     },
@@ -12088,6 +12501,8 @@
           "path": "providers/google/models/gemini-flash-lite-latest.toml",
           "urls": [
             "https://ai.google.dev/api/caching#Content",
+            "https://ai.google.dev/api/caching#FunctionCallingConfig,",
+            "https://ai.google.dev/gemini-api/docs/function-calling#function_calling_modes",
             "https://ai.google.dev/gemini-api/docs/image-understanding",
             "https://ai.google.dev/gemini-api/docs/interactions-overview",
             "https://ai.google.dev/gemini-api/docs/openai",
@@ -12122,6 +12537,35 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "138279c9f7de579f74e59685691474954a8c6348"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 0.3,
+                "cache": {
+                  "read": 0.03,
+                  "storage": 1
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 2.5,
+                "unit": "token"
+              }
+            }
+          },
+          "cache": {
+            "implicit": true,
+            "explicit": true
+          },
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z",
+            "blobSha": "07f1faadcbd8a36c4ac75f6674efdb027585159e"
           }
         }
       ]
@@ -12211,9 +12655,15 @@
         "source": {
           "path": "providers/google/models/gemini-omni-1.1-flash.toml",
           "urls": [
+            "https://ai.google.dev/gemini-api/docs/background-execution",
+            "https://ai.google.dev/gemini-api/docs/deprecations",
             "https://ai.google.dev/gemini-api/docs/models/gemini-omni-flash",
+            "https://ai.google.dev/gemini-api/docs/models/gemini-omni-flash,",
+            "https://ai.google.dev/gemini-api/docs/omni",
             "https://ai.google.dev/gemini-api/docs/pricing",
-            "https://generativelanguage.googleapis.com/v1beta/models"
+            "https://ai.google.dev/gemini-api/docs/pricing#gemini-omni-1.1-flash,",
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            "https://github.com/anomalyco/opencode/pull/63683,"
           ]
         }
       },
@@ -12244,6 +12694,33 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "43884e86532a11eedf6d72d2bd9ef7260bd20781"
           }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 1.5,
+                "unit": "token"
+              },
+              "output": {
+                "price": 9,
+                "unit": "token"
+              }
+            },
+            "video": {
+              "output": {
+                "price": 17.5,
+                "unit": "token"
+              }
+            }
+          },
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z",
+            "blobSha": "e4fa92ab57a25520c7cfa49422ab6c8dfbec664d"
+          }
         }
       ]
     },
@@ -12257,6 +12734,7 @@
             "https://ai.google.dev/gemini-api/docs/models/gemini-omni-flash",
             "https://ai.google.dev/gemini-api/docs/omni",
             "https://ai.google.dev/gemini-api/docs/pricing#gemini-omni-1.2-flash",
+            "https://ai.google.dev/gemini-api/docs/pricing#gemini-omni-1.2-flash,",
             "https://generativelanguage.googleapis.com/v1beta/models",
             "https://github.com/anomalyco/opencode/pull/63683,"
           ]
@@ -12288,6 +12766,33 @@
             "revision": "319c6e52364db63d46d5f83224e692246afd404d",
             "collectedAt": "2026-11-15T10:53:55.493Z",
             "blobSha": "6e14cb67d4a082df8d908a56052e27883ecd1e7f"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 1.5,
+                "unit": "token"
+              },
+              "output": {
+                "price": 9,
+                "unit": "token"
+              }
+            },
+            "video": {
+              "output": {
+                "price": 12,
+                "unit": "token"
+              }
+            }
+          },
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z",
+            "blobSha": "d46f536fc2eea866f5406b162459d7b77c39e433"
           }
         }
       ]
@@ -12328,6 +12833,14 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "b0ae7c0a774083d27e86780d6a3929b8e952301c"
+          }
+        },
+        {
+          "date": "2026-11-24T15:57:48.778Z",
+          "availability": "removed",
+          "source": {
+            "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
+            "collectedAt": "2026-11-24T15:57:48.778Z"
           }
         }
       ]
