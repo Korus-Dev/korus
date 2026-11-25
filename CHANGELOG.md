@@ -2,6 +2,14 @@
 
 All notable Korus changes are recorded here.
 
+## [0.60.2] - 2026-11-24
+
+### Improvements and fixes
+
+- Finished answers stay visible when you expand or collapse **View details**, even when a tool runs after the answer.
+- Removed the focus outline from work and tool group summaries.
+- Updated the model pricing catalog used by **Analytics**.
+
 ## [0.60.1] - 2026-11-24
 
 ### New features

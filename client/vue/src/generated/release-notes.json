@@ -1,7 +1,13 @@
 {
   "schemaVersion": 2,
-  "currentVersion": "0.60.1",
+  "currentVersion": "0.60.2",
   "releases": [
+    {
+      "version": "0.60.2",
+      "releasedAt": "2026-11-24",
+      "sourceSha256": "1d6e9ceaac2c0f99b46ebd583a2a4780f989666c758aaad03dd02106bd952f7c",
+      "markdown": "### Improvements and fixes\n\n- Finished answers stay visible when you expand or collapse **View details**, even when a tool runs after the answer.\n- Removed the focus outline from work and tool group summaries.\n- Updated the model pricing catalog used by **Analytics**."
+    },
     {
       "version": "0.60.1",
       "releasedAt": "2026-11-24",
