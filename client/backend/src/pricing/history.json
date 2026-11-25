@@ -4053,6 +4053,120 @@
         }
       ]
     },
+    "gpt-6-astra-healthcare": {
+      "metadata": {
+        "canonicalId": "openai/gpt-6-astra-healthcare",
+        "source": {
+          "path": "providers/openai/models/gpt-6-astra-healthcare.toml",
+          "urls": [
+            "https://developers.openai.com/api/docs/changelog",
+            "https://developers.openai.com/api/docs/guides/prompt-caching",
+            "https://developers.openai.com/api/docs/pricing#built-in-tools",
+            "https://developers.openai.com/api/docs/pricing#healthcare-model-configurations"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 10,
+                "cache": {
+                  "read": 1
+                },
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 20,
+                    "cache": {
+                      "read": 2
+                    },
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "price": 50,
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 75,
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "web_search": {
+              "price": 10
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "not": {
+                    "region": {
+                      "equals": "global"
+                    }
+                  }
+                },
+                "factor": {
+                  "text": 1.1
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "text": 2
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "priority"
+          ],
+          "cache": {
+            "implicit": {
+              "min_tokens": 1024
+            },
+            "explicit": {
+              "ttl": [
+                "12h",
+                "30m"
+              ],
+              "min_tokens": 1024,
+              "max_breakpoints": 4
+            }
+          },
+          "modes": {
+            "fast": {
+              "service_tier": "priority",
+              "body": {
+                "service_tier": "priority"
+              }
+            }
+          },
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "92ec3b971b2d747c0b19afb2417272001c434f2d"
+          }
+        }
+      ]
+    },
     "gpt-6-cyber": {
       "metadata": {
         "canonicalId": "openai/gpt-6-cyber",
@@ -4997,6 +5111,120 @@
         }
       ]
     },
+    "gpt-6.1-sol-healthcare": {
+      "metadata": {
+        "canonicalId": "openai/gpt-6.1-sol-healthcare",
+        "source": {
+          "path": "providers/openai/models/gpt-6.1-sol-healthcare.toml",
+          "urls": [
+            "https://developers.openai.com/api/docs/changelog",
+            "https://developers.openai.com/api/docs/guides/prompt-caching",
+            "https://developers.openai.com/api/docs/pricing#built-in-tools",
+            "https://developers.openai.com/api/docs/pricing#healthcare-model-configurations"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 2,
+                "cache": {
+                  "read": 0.1
+                },
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 4,
+                    "cache": {
+                      "read": 0.2
+                    },
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "price": 10,
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 15,
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "web_search": {
+              "price": 10
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "not": {
+                    "region": {
+                      "equals": "global"
+                    }
+                  }
+                },
+                "factor": {
+                  "text": 1.1
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "text": 2
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "priority"
+          ],
+          "cache": {
+            "implicit": {
+              "min_tokens": 1024
+            },
+            "explicit": {
+              "ttl": [
+                "12h",
+                "30m"
+              ],
+              "min_tokens": 1024,
+              "max_breakpoints": 4
+            }
+          },
+          "modes": {
+            "fast": {
+              "service_tier": "priority",
+              "body": {
+                "service_tier": "priority"
+              }
+            }
+          },
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "ea08faf21d2ed66130678384f4d49e8fb5776761"
+          }
+        }
+      ]
+    },
     "gpt-6.1-terra": {
       "metadata": {
         "canonicalId": "openai/gpt-6.1-terra",
@@ -5423,6 +5651,128 @@
         }
       ]
     },
+    "gpt-6.2-astra-healthcare": {
+      "metadata": {
+        "canonicalId": "openai/gpt-6.2-astra-healthcare",
+        "source": {
+          "path": "providers/openai/models/gpt-6.2-astra-healthcare.toml",
+          "urls": [
+            "https://developers.openai.com/api/docs/changelog",
+            "https://developers.openai.com/api/docs/guides/prompt-caching",
+            "https://developers.openai.com/api/docs/pricing#built-in-tools",
+            "https://developers.openai.com/api/docs/pricing#healthcare-model-configurations"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 8,
+                "cache": {
+                  "read": 0.4,
+                  "write": {
+                    "12h": 20,
+                    "30m": 10
+                  }
+                },
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 16,
+                    "cache": {
+                      "read": 0.8,
+                      "write": {
+                        "12h": 40,
+                        "30m": 20
+                      }
+                    },
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "price": 40,
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 60,
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "web_search": {
+              "price": 10
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "not": {
+                    "region": {
+                      "equals": "global"
+                    }
+                  }
+                },
+                "factor": {
+                  "text": 1.1
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "text": 2
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "priority"
+          ],
+          "cache": {
+            "implicit": {
+              "min_tokens": 1024
+            },
+            "explicit": {
+              "ttl": [
+                "12h",
+                "30m"
+              ],
+              "min_tokens": 1024,
+              "max_breakpoints": 4
+            }
+          },
+          "modes": {
+            "fast": {
+              "service_tier": "priority",
+              "body": {
+                "service_tier": "priority"
+              }
+            }
+          },
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "b90a9b730b293944c34d82445e60968ae0a13668"
+          }
+        }
+      ]
+    },
     "gpt-6.2-sol": {
       "metadata": {
         "canonicalId": "openai/gpt-6.2-sol",
@@ -5592,6 +5942,128 @@
             "revision": "d893237face842c5a4c918009d50c8e33b7c6523",
             "collectedAt": "2026-11-18T14:10:51.655Z",
             "blobSha": "f7e99ab82c84229363a856176b651eab1db9e1cf"
+          }
+        }
+      ]
+    },
+    "gpt-6.2-sol-healthcare": {
+      "metadata": {
+        "canonicalId": "openai/gpt-6.2-sol-healthcare",
+        "source": {
+          "path": "providers/openai/models/gpt-6.2-sol-healthcare.toml",
+          "urls": [
+            "https://developers.openai.com/api/docs/changelog",
+            "https://developers.openai.com/api/docs/guides/prompt-caching",
+            "https://developers.openai.com/api/docs/pricing#built-in-tools",
+            "https://developers.openai.com/api/docs/pricing#healthcare-model-configurations"
+          ]
+        }
+      },
+      "cost": [
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 2,
+                "cache": {
+                  "read": 0.1,
+                  "write": {
+                    "12h": 5,
+                    "30m": 2.5
+                  }
+                },
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 4,
+                    "cache": {
+                      "read": 0.2,
+                      "write": {
+                        "12h": 10,
+                        "30m": 5
+                      }
+                    },
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "price": 10,
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 15,
+                    "when": {
+                      "context": {
+                        "gt": 272000
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "web_search": {
+              "price": 10
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "not": {
+                    "region": {
+                      "equals": "global"
+                    }
+                  }
+                },
+                "factor": {
+                  "text": 1.1
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "text": 2
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "priority"
+          ],
+          "cache": {
+            "implicit": {
+              "min_tokens": 1024
+            },
+            "explicit": {
+              "ttl": [
+                "12h",
+                "30m"
+              ],
+              "min_tokens": 1024,
+              "max_breakpoints": 4
+            }
+          },
+          "modes": {
+            "fast": {
+              "service_tier": "priority",
+              "body": {
+                "service_tier": "priority"
+              }
+            }
+          },
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "f21ade7779fceed6fb04cbd20b538357ae4b443c"
           }
         }
       ]
@@ -9525,6 +9997,7 @@
           "urls": [
             "https://ai.google.dev/gemini-api/docs/deprecations",
             "https://ai.google.dev/gemini-api/docs/interactions-overview",
+            "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-image",
             "https://ai.google.dev/gemini-api/docs/pricing"
           ]
         }
@@ -9588,6 +10061,34 @@
             "revision": "5c40e591a65246bcbf2e6a890d90516086ba72de",
             "collectedAt": "2026-11-17T14:34:47.531Z",
             "blobSha": "de5e6f96ea9219bdaff5a8ba007f2211ef6af0c7"
+          }
+        },
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 0.3,
+                "unit": "token"
+              },
+              "output": {
+                "price": 2.5,
+                "unit": "token"
+              }
+            },
+            "image": {
+              "output": {
+                "price": 30,
+                "unit": "token"
+              }
+            }
+          },
+          "cache": false,
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "dbfe32cd81877111a0c4797853550a029546de0a"
           }
         }
       ]
@@ -10915,9 +11416,12 @@
           "path": "providers/google/models/gemini-3.5-flash-lite.toml",
           "urls": [
             "https://ai.google.dev/api/caching#Content",
+            "https://ai.google.dev/api/caching#FunctionCallingConfig,",
             "https://ai.google.dev/gemini-api/docs/flex-inference",
+            "https://ai.google.dev/gemini-api/docs/function-calling#function_calling_modes",
             "https://ai.google.dev/gemini-api/docs/generate-content/caching",
             "https://ai.google.dev/gemini-api/docs/interactions-overview",
+            "https://ai.google.dev/gemini-api/docs/interactions-overview#supported-models-agents",
             "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite",
             "https://ai.google.dev/gemini-api/docs/openai",
             "https://ai.google.dev/gemini-api/docs/pricing",
@@ -11001,6 +11505,106 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "35d987a7716cf9f1001f1bc0034fb42d31b3bb19"
+          }
+        },
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 0.3,
+                "cache": {
+                  "read": 0.03,
+                  "storage": 1
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 2.5,
+                "unit": "token"
+              }
+            },
+            "audio": {
+              "input": {
+                "price": 0.3,
+                "cache": {
+                  "read": 0.03,
+                  "storage": 1
+                },
+                "unit": "token"
+              }
+            },
+            "web_search": {
+              "price": 14
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "flex"
+                  }
+                },
+                "factor": {
+                  "audio": {
+                    "input": {
+                      "cache": {
+                        "read": 0.6666666666666666
+                      },
+                      "price": 0.5
+                    }
+                  },
+                  "text": {
+                    "input": {
+                      "cache": {
+                        "read": 0.6666666666666666
+                      },
+                      "price": 0.5
+                    },
+                    "output": 0.5
+                  }
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "audio": {
+                    "input": {
+                      "cache": {
+                        "read": 1.6666666666666667
+                      },
+                      "price": 1.8
+                    }
+                  },
+                  "text": {
+                    "input": {
+                      "cache": {
+                        "read": 1.6666666666666667
+                      },
+                      "price": 1.8
+                    },
+                    "output": 1.8
+                  }
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "flex",
+            "priority"
+          ],
+          "cache": {
+            "implicit": true,
+            "explicit": true
+          },
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "a250ed022bb0f8afbda8416281ee7f780b0646e9"
           }
         }
       ]
@@ -12502,10 +13106,13 @@
           "urls": [
             "https://ai.google.dev/api/caching#Content",
             "https://ai.google.dev/api/caching#FunctionCallingConfig,",
+            "https://ai.google.dev/gemini-api/docs/flex-inference#supported-models,",
             "https://ai.google.dev/gemini-api/docs/function-calling#function_calling_modes",
             "https://ai.google.dev/gemini-api/docs/image-understanding",
             "https://ai.google.dev/gemini-api/docs/interactions-overview",
             "https://ai.google.dev/gemini-api/docs/openai",
+            "https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite",
+            "https://ai.google.dev/gemini-api/docs/priority-inference#supported-models",
             "https://generativelanguage.googleapis.com/v1beta/models"
           ]
         }
@@ -12566,6 +13173,106 @@
             "revision": "e4b5dd537982bdf9f60cd67338211eb62c5a028a",
             "collectedAt": "2026-11-24T15:57:48.778Z",
             "blobSha": "07f1faadcbd8a36c4ac75f6674efdb027585159e"
+          }
+        },
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 0.3,
+                "cache": {
+                  "read": 0.03,
+                  "storage": 1
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 2.5,
+                "unit": "token"
+              }
+            },
+            "audio": {
+              "input": {
+                "price": 0.3,
+                "cache": {
+                  "read": 0.03,
+                  "storage": 1
+                },
+                "unit": "token"
+              }
+            },
+            "web_search": {
+              "price": 14
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "flex"
+                  }
+                },
+                "factor": {
+                  "audio": {
+                    "input": {
+                      "cache": {
+                        "read": 0.6666666666666666
+                      },
+                      "price": 0.5
+                    }
+                  },
+                  "text": {
+                    "input": {
+                      "cache": {
+                        "read": 0.6666666666666666
+                      },
+                      "price": 0.5
+                    },
+                    "output": 0.5
+                  }
+                }
+              },
+              {
+                "when": {
+                  "service_tier": {
+                    "equals": "priority"
+                  }
+                },
+                "factor": {
+                  "audio": {
+                    "input": {
+                      "cache": {
+                        "read": 1.6666666666666667
+                      },
+                      "price": 1.8
+                    }
+                  },
+                  "text": {
+                    "input": {
+                      "cache": {
+                        "read": 1.6666666666666667
+                      },
+                      "price": 1.8
+                    },
+                    "output": 1.8
+                  }
+                }
+              }
+            ]
+          },
+          "serviceTiers": [
+            "flex",
+            "priority"
+          ],
+          "cache": {
+            "implicit": true,
+            "explicit": true
+          },
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "b7795a0653047f3cbd12fa0d849951e65d135d68"
           }
         }
       ]
@@ -12852,14 +13559,17 @@
           "path": "providers/google/models/gemini-pro-latest.toml",
           "urls": [
             "https://ai.google.dev/api/caching#Content",
+            "https://ai.google.dev/api/caching#FunctionCallingConfig,",
             "https://ai.google.dev/gemini-api/docs/changelog,",
             "https://ai.google.dev/gemini-api/docs/deprecations",
+            "https://ai.google.dev/gemini-api/docs/function-calling#function_calling_modes",
             "https://ai.google.dev/gemini-api/docs/generate-content/caching",
             "https://ai.google.dev/gemini-api/docs/interactions-overview",
             "https://ai.google.dev/gemini-api/docs/models",
             "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview",
             "https://ai.google.dev/gemini-api/docs/openai",
             "https://ai.google.dev/gemini-api/docs/pricing",
+            "https://ai.google.dev/gemini-api/docs/pricing#gemini-3.1-pro-preview",
             "https://ai.google.dev/gemini-api/docs/thinking",
             "https://generativelanguage.googleapis.com/v1beta/models"
           ]
@@ -12919,6 +13629,63 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "99f94ca31e88c6a85a92662488e3439bba75860c"
           }
+        },
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 2,
+                "cache": {
+                  "read": 0.2,
+                  "storage": 4.5
+                },
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 4,
+                    "cache": {
+                      "read": 0.4
+                    },
+                    "when": {
+                      "context": {
+                        "gt": 200000
+                      }
+                    }
+                  }
+                ]
+              },
+              "output": {
+                "price": 12,
+                "unit": "token",
+                "overrides": [
+                  {
+                    "price": 18,
+                    "when": {
+                      "context": {
+                        "gt": 200000
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "web_search": {
+              "price": 14
+            }
+          },
+          "cache": {
+            "implicit": {
+              "min_tokens": 4096
+            },
+            "explicit": true
+          },
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "df0e110d901e663b746fe4613749ff156c1d053a"
+          }
         }
       ]
     },
@@ -12929,11 +13696,14 @@
           "path": "providers/google/models/gemini-robotics-er-2-preview.toml",
           "urls": [
             "https://ai.google.dev/api/caching#Content",
+            "https://ai.google.dev/api/caching#FunctionCallingConfig,",
+            "https://ai.google.dev/gemini-api/docs/function-calling#function_calling_modes",
             "https://ai.google.dev/gemini-api/docs/generate-content/caching",
             "https://ai.google.dev/gemini-api/docs/interactions-overview",
             "https://ai.google.dev/gemini-api/docs/models/gemini-robotics-er-2-preview",
             "https://ai.google.dev/gemini-api/docs/openai",
             "https://ai.google.dev/gemini-api/docs/pricing",
+            "https://ai.google.dev/gemini-api/docs/pricing#gemini-robotics-er-2",
             "https://ai.google.dev/gemini-api/docs/pricing#gemini-robotics-er-2;",
             "https://ai.google.dev/gemini-api/docs/thinking"
           ]
@@ -12983,6 +13753,61 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "341d35d371b80dbe1ffb0bddbc8abdbadef5fb7d"
           }
+        },
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 1,
+                "cache": {
+                  "read": 0.1,
+                  "storage": 0.5
+                },
+                "unit": "token"
+              },
+              "output": {
+                "price": 5,
+                "unit": "token"
+              }
+            },
+            "audio": {
+              "input": {
+                "price": 1,
+                "cache": {
+                  "read": 0.1,
+                  "storage": 0.5
+                },
+                "unit": "token"
+              }
+            },
+            "web_search": {
+              "price": 14
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "date": {
+                    "gte": "2027-01-01"
+                  }
+                },
+                "factor": {
+                  "audio": 2,
+                  "text": 2
+                }
+              }
+            ]
+          },
+          "cache": {
+            "implicit": true,
+            "explicit": true
+          },
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "ce7b037961a9763148e68d721f57a726db90b2d4"
+          }
         }
       ]
     },
@@ -12995,6 +13820,7 @@
             "https://ai.google.dev/api/caching#Content",
             "https://ai.google.dev/gemini-api/docs/models/gemini-robotics-er-2-streaming-preview",
             "https://ai.google.dev/gemini-api/docs/pricing",
+            "https://ai.google.dev/gemini-api/docs/pricing#gemini-robotics-er-2-streaming",
             "https://ai.google.dev/gemini-api/docs/pricing#gemini-robotics-er-2-streaming;"
           ]
         }
@@ -13035,6 +13861,50 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "60fc42a2c384c772f4361de7a2fb9574fd90e345"
+          }
+        },
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "priced",
+          "rates": {
+            "text": {
+              "input": {
+                "price": 1,
+                "unit": "token"
+              },
+              "output": {
+                "price": 5,
+                "unit": "token"
+              }
+            },
+            "audio": {
+              "input": {
+                "price": 1,
+                "unit": "token"
+              }
+            },
+            "web_search": {
+              "price": 14
+            },
+            "multipliers": [
+              {
+                "when": {
+                  "date": {
+                    "gte": "2027-01-01"
+                  }
+                },
+                "factor": {
+                  "audio": 2,
+                  "text": 2
+                }
+              }
+            ]
+          },
+          "cache": false,
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "19db6da7ba58ec1c678fd14a9cbac285f7179789"
           }
         }
       ]
@@ -13222,6 +14092,16 @@
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "e7a30aa591515b66597355bd92c6c3f155ab50a8"
           }
+        },
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "unpriced",
+          "cache": false,
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "ba06f4108c0247d2633383d54203ca4a30838dd6"
+          }
         }
       ]
     },
@@ -13259,6 +14139,16 @@
             "revision": "47e3a36b1fe10442597bb90adb7cfa007c3e7348",
             "collectedAt": "2026-10-25T03:18:36.579Z",
             "blobSha": "9120a64d8bc3d0142e036fe1019da5ee5b588250"
+          }
+        },
+        {
+          "date": "2026-11-25T15:44:19.011Z",
+          "availability": "unpriced",
+          "cache": false,
+          "source": {
+            "revision": "c0e0acef4a3d6840acaa457221186ae8ad81375f",
+            "collectedAt": "2026-11-25T15:44:19.011Z",
+            "blobSha": "f6a24155173bf53399d60d774859a270eb9e3f47"
           }
         }
       ]
